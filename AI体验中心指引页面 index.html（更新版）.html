@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 体验中心 · 对话式工具指引</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&family=Poppins:wght@500;600;700&display=swap');
+    :root {
+      --forest: #0f172a; --forest-2: #334155; --jade: #0369a1; --jade-pale: #e0f2fe;
+      --canvas: #f8fafc; --paper: #ffffff; --ink: #020617; --muted: #475569;
+      --line: #e2e8f0; --amber: #b45309; --amber-pale: #fff7ed; --blue: #0369a1;
+      --blue-pale: #f0f9ff; --shadow: 0 18px 44px rgba(15, 23, 42, .10);
+    }
+    * { box-sizing: border-box; }
+    html { min-height: 100%; }
+    body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--canvas); color: var(--ink); font-family: "Open Sans", "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 16px; }
+    button, textarea { font: inherit; } button { cursor: pointer; } .hidden { display: none !important; }
+    .topbar { height: 76px; padding: 0 max(24px, calc((100vw - 1240px) / 2)); display: flex; justify-content: space-between; align-items: center; color: #fff; background: var(--forest); border-bottom: 1px solid #1e293b; }
+    .brand { display: flex; align-items: center; gap: 12px; } .brand-mark { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 7px; background: #e0f2fe; color: var(--jade); }
+    .brand-mark svg { width: 19px; height: 19px; stroke-width: 2.4; }.brand h1 { margin: 0; font-family: "Poppins", "PingFang SC", sans-serif; font-size: 23px; letter-spacing: 0; } .brand p { margin: 2px 0 0; color: #94a3b8; font-size: 12px; }
+    .secure-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid #475569; border-radius: 5px; color: #cbd5e1; font-size: 12px; }.secure-badge svg { width: 14px; height: 14px; }
+    .page { width: 100%; max-width: none; min-height: calc(100vh - 76px); margin: 0; } .eyebrow { color: var(--jade); font-size: 13px; font-weight: 800; letter-spacing: 0; }
+    .welcome { display: grid; grid-template-columns: 1.2fr .8fr; min-height: calc(100vh - 76px); border: 0; background: var(--paper); box-shadow: none; overflow: hidden; }
+    .welcome-copy { padding: clamp(42px, 7vw, 120px) clamp(32px, 7vw, 120px) 42px; display: flex; flex-direction: column; justify-content: space-between; }
+    .welcome h2 { max-width: 650px; margin: 14px 0 17px; font-family: "Poppins", "PingFang SC", sans-serif; font-size: clamp(35px, 4vw, 56px); line-height: 1.2; font-weight: 700; letter-spacing: 0; }
+    .welcome-copy > div > p { max-width: 570px; margin: 0; color: var(--muted); font-size: 17px; line-height: 1.9; }
+    .welcome-actions { margin-top: 28px; display: flex; align-items: center; gap: 16px; }
+    .button { min-height: 50px; padding: 12px 20px; border: 1px solid var(--jade); border-radius: 6px; background: var(--jade); color: #fff; font-weight: 800; transition: background .18s ease, border-color .18s ease; }
+    .button:hover { background: #075985; border-color: #075985; } .button i { width: 17px; height: 17px; margin-left: 7px; vertical-align: -3px; }
+    .action-note { color: var(--muted); font-size: 13px; }
+    .workflow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-top: 1px solid var(--line); }
+    .workflow div { padding: 18px 16px 0 0; border-right: 1px solid var(--line); } .workflow div + div { padding-left: 16px; } .workflow div:last-child { border-right: 0; }
+    .workflow span { display: block; color: var(--jade); font-size: 12px; font-weight: 800; margin-bottom: 8px; }.workflow b { display: block; font-family: "Poppins", "PingFang SC", sans-serif; font-size: 15px; margin-bottom: 5px; }.workflow p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+    .welcome-side { padding: clamp(34px, 5vw, 88px); color: #e7f5ec; background: var(--forest); display: flex; flex-direction: column; justify-content: space-between; }
+    .welcome-side .side-label { color: #7dd3fc; font-size: 12px; font-weight: 800; letter-spacing: 0; }.welcome-side h3 { margin: 13px 0 0; max-width: 290px; font-family: "Poppins", "PingFang SC", sans-serif; font-size: 29px; line-height: 1.35; letter-spacing: 0; }
+    .agent-signal { padding: 19px 0; border-top: 1px solid #334155; border-bottom: 1px solid #334155; }.agent-signal b { display: block; font-size: 14px; margin-bottom: 8px; }.agent-signal p { margin: 0; color: #cbd5e1; font-size: 14px; line-height: 1.8; }
+    .safety { margin: 0; padding: 15px 18px; color: #735518; background: var(--amber-pale); border-left: 3px solid #d5a23a; font-size: 13px; line-height: 1.8; }.safety b { color: var(--amber); }
+    .workspace { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 0; min-height: calc(100vh - 76px); background: var(--paper); border: 0; box-shadow: none; }
+    .conversation { order: 1; min-width: 0; display: flex; flex-direction: column; }.conversation-head { padding: 28px 34px 20px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }.conversation-head h2 { margin: 5px 0 0; font-family: "Poppins", "PingFang SC", sans-serif; font-size: 29px; letter-spacing: 0; }.conversation-head p { margin: 7px 0 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
+    .status { flex: none; padding: 6px 8px; color: var(--jade); background: var(--jade-pale); font-size: 12px; font-weight: 800; }.messages { flex: 1; min-height: 410px; padding: 30px 34px 18px; overflow-y: auto; }
+    .message { display: flex; gap: 11px; max-width: 86%; margin-bottom: 20px; }.message.user { margin-left: auto; flex-direction: row-reverse; }.avatar { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; background: var(--forest); color: #fff; font-size: 12px; font-weight: 800; }.user .avatar { color: var(--forest-2); background: #dbeafe; }
+    .bubble { padding: 13px 15px; border: 1px solid #e2e8f0; border-radius: 3px 10px 10px 10px; background: #f8fafc; font-size: 15px; line-height: 1.75; }.user .bubble { border-color: #bae6fd; border-radius: 10px 3px 10px 10px; background: var(--jade-pale); }.bubble.markdown > :first-child { margin-top: 0; }.bubble.markdown > :last-child { margin-bottom: 0; }.bubble.markdown p { margin: 0 0 10px; }.bubble.markdown ul, .bubble.markdown ol { margin: 7px 0 10px 20px; padding: 0; }.bubble.markdown li + li { margin-top: 3px; }.bubble.markdown strong { color: var(--forest); }.bubble.markdown code { padding: 2px 5px; color: #0f3d55; background: #e0f2fe; border-radius: 3px; font-size: .92em; }.bubble.markdown pre { margin: 10px 0; padding: 12px; overflow-x: auto; color: #e2e8f0; background: #0f172a; border-radius: 4px; }.bubble.markdown pre code { padding: 0; color: inherit; background: transparent; }.bubble.markdown a { color: var(--jade); text-decoration: underline; }.question { margin-top: 12px; color: var(--jade); font-weight: 800; }.question-options { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }.question-option { padding: 8px 11px; border: 1px solid #7dd3fc; border-radius: 4px; color: var(--jade); background: #fff; font-size: 14px; font-weight: 700; text-align: left; }.question-option:hover { background: var(--jade-pale); }.question-option:disabled { opacity: .55; cursor: not-allowed; }
+    .recommendation { max-width: calc(86% - 43px); margin: -5px 0 22px 43px; padding: 20px; border: 1px solid #bae6fd; border-left: 4px solid var(--jade); background: #fafdff; }.recommendation-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }.recommendation-title { color: var(--forest); font-size: 19px; font-weight: 800; }.tool-tag { padding: 4px 7px; color: var(--jade); background: var(--jade-pale); font-size: 12px; font-weight: 800; }.recommendation p { margin: 13px 0; color: var(--forest-2); font-size: 14px; line-height: 1.75; }
+    .benchmarks { padding-top: 11px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }.benchmarks b { color: var(--forest-2); }.benchmark-item { display: inline-block; margin: 5px 4px 0 0; padding: 3px 7px; background: #f1f5f9; color: #475569; }.recommendation-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+    .small-button { padding: 8px 11px; border: 1px solid #7dd3fc; border-radius: 4px; color: var(--jade); background: #fff; font-size: 14px; font-weight: 800; }.small-button.primary { color: #fff; background: var(--jade); border-color: var(--jade); }.small-button:hover { background: var(--jade-pale); }.small-button.primary:hover { background: #075985; }
+    .practice { max-width: calc(86% - 43px); margin: 0 0 22px 43px; padding: 18px; background: var(--blue-pale); border-left: 3px solid var(--blue); }.practice h3 { margin: 0 0 8px; color: var(--blue); font-size: 16px; }.practice p { margin: 0 0 9px; color: #466777; font-size: 14px; line-height: 1.7; }.prompt { padding: 11px; color: #254a5c; background: #fff; border: 1px solid #c6dce7; white-space: pre-wrap; font-size: 14px; line-height: 1.7; }.practice ol { margin: 10px 0 0 20px; padding: 0; color: #36596c; font-size: 14px; line-height: 1.8; }
+    .video-wrap { margin-top: 14px; background: #0f172a; }.video-wrap video { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; }.video-help { padding: 12px; color: #cbd5e1; font-size: 13px; }.composer { padding: 18px 28px 22px; border-top: 1px solid var(--line); background: #f8fafc; }.composer textarea { display: block; width: 100%; min-height: 86px; padding: 13px; resize: vertical; color: var(--ink); background: #fff; border: 1px solid #cbd5e1; border-radius: 5px; line-height: 1.6; outline: none; }.composer textarea:focus { border-color: var(--jade); box-shadow: 0 0 0 3px rgba(3,105,161,.12); }.composer-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; }.composer-foot span { color: var(--muted); font-size: 12px; }.send-button { min-width: 76px; padding: 9px 15px; color: #fff; background: var(--jade); border: 0; border-radius: 4px; font-weight: 800; }.send-button svg { width: 15px; height: 15px; margin-left: 3px; vertical-align: -3px; }.send-button:disabled { background: #94a3b8; cursor: not-allowed; }
+    .journey { order: -1; padding: 28px 20px 20px; color: #e2e8f0; background: var(--forest); }.journey h2 { margin: 0; font-family: "Poppins", "PingFang SC", sans-serif; font-size: 20px; }.journey > p { margin: 9px 0 24px; color: #94a3b8; font-size: 13px; line-height: 1.7; }.journey::before { content: "SESSION"; display: block; margin-bottom: 10px; color: #7dd3fc; font-size: 11px; font-weight: 800; letter-spacing: 0; }.scene-record, .empty-record { padding: 13px 0; border-top: 1px solid #334155; }.scene-record b { display: block; font-size: 14px; line-height: 1.55; }.scene-record span { display: block; margin-top: 5px; color: #7dd3fc; font-size: 12px; }.empty-record { color: #cbd5e1; font-size: 13px; line-height: 1.75; }.reset { width: 100%; margin-top: 18px; padding: 9px; color: #cbd5e1; background: transparent; border: 1px solid #475569; font-size: 13px; }.reset:hover { background: #1e293b; }
+    @media (max-width: 860px) { .topbar { padding: 0 20px; }.page { width: min(100% - 26px, 680px); min-height: auto; margin: 20px auto 32px; }.welcome { min-height: auto; grid-template-columns: 1fr; border: 1px solid var(--line); box-shadow: var(--shadow); }.welcome-side { min-height: 260px; }.welcome-copy { padding: 40px 30px 28px; }.workspace { min-height: 690px; grid-template-columns: 1fr; border: 1px solid var(--line); box-shadow: var(--shadow); }.journey { order: -1; }.conversation-head { padding: 22px 20px 18px; }.messages { padding: 24px 20px 16px; }.composer { padding: 15px 18px 18px; } }
+    button:focus-visible, textarea:focus-visible { outline: 3px solid #7dd3fc; outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
+    @media (max-width: 540px) { .topbar { height: 68px; }.secure-badge { display: none; }.brand h1 { font-size: 21px; }.brand p { font-size: 11px; }.welcome h2 { font-size: 36px; }.welcome-copy > div > p { font-size: 15px; }.workflow { grid-template-columns: 1fr; }.workflow div, .workflow div + div { padding: 15px 0; border-right: 0; border-bottom: 1px solid var(--line); }.workflow div:last-child { border-bottom: 0; }.welcome-side { padding: 28px; }.message, .recommendation, .practice { max-width: 100%; }.recommendation, .practice { margin-left: 0; }.conversation-head h2 { font-size: 25px; }.status { display: none; }.composer-foot { align-items: flex-end; }.composer-foot span { max-width: 185px; line-height: 1.5; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"><i data-lucide="sparkles"></i></div>
+      <div>
+        <h1>AI 体验中心</h1>
+        <p>对话式工具指引 · 溧阳基地数字工具站</p>
+      </div>
+    </div>
+    <div class="secure-badge"><i data-lucide="shield-check" aria-hidden="true"></i>仅使用脱敏练习材料</div>
+  </header>
+
+  <main class="page">
+    <section id="welcomeView" class="welcome">
+      <div class="welcome-copy">
+        <div>
+          <div class="eyebrow">任务导览 · Qwen Agent</div>
+          <h2>把你要做的事，直接交给 AI 导览员。</h2>
+          <p>不需要选择工具或分类。描述你的工作目标，Agent 会理解场景、追问必要信息，并带你完成一次合规的 AI 实践。</p>
+          <div class="welcome-actions">
+            <button class="button" id="startButton">开始对话 <i data-lucide="arrow-right" aria-hidden="true"></i></button>
+            <span class="action-note">从空白输入框开始</span>
+          </div>
+        </div>
+        <div class="workflow">
+          <div><span>01 / 任务</span><b>说出目标</b><p>用自己的话描述想完成的工作。</p></div>
+          <div><span>02 / 推荐</span><b>理解后匹配</b><p>只推荐本中心可体验的工具。</p></div>
+          <div><span>03 / 实践</span><b>完成再继续</b><p>一个场景结束后，可直接开启下一个。</p></div>
+        </div>
+      </div>
+      <aside class="welcome-side">
+        <div>
+          <div class="side-label">AI EXPERIENCE CENTER</div>
+          <h3>以任务为起点，而不是以工具为起点。</h3>
+        </div>
+        <div class="agent-signal">
+          <b>Agent 会做什么</b>
+          <p>理解你的目标，提供唯一推荐、脱敏提示词和下一步操作。对标产品只用于理解定位，不会成为体验入口。</p>
+        </div>
+        <aside class="safety"><b>安全提醒：</b>请只使用虚构或脱敏材料，不要输入涉密、个人或真实经营数据。</aside>
+      </aside>
+    </section>
+
+    <section id="guideView" class="workspace hidden" aria-label="对话式 AI 指引">
+      <section class="conversation">
+        <header class="conversation-head">
+          <div>
+            <div class="eyebrow">AI 导览 Agent</div>
+            <h2>描述你的工作目标</h2>
+            <p>我会基于当前场景进行推荐；完成后，你可以继续描述下一个场景。</p>
+          </div>
+          <span class="status" id="agentStatus">准备就绪</span>
+        </header>
+        <div class="messages" id="messages" aria-live="polite"></div>
+        <form class="composer" id="chatForm">
+          <textarea id="messageInput" maxlength="2000" placeholder="描述你希望完成的任务……"></textarea>
+          <div class="composer-foot">
+            <span id="inputHint">请使用虚构或脱敏的材料 · Ctrl / Cmd + Enter 发送</span>
+            <button class="send-button" id="sendButton" type="submit">发送 <i data-lucide="arrow-up" aria-hidden="true"></i></button>
+          </div>
+        </form>
+      </section>
+
+      <aside class="journey">
+        <h2>本次体验记录</h2>
+        <p>完成一个场景后，会保留简要记录；新的任务默认独立处理。</p>
+        <div id="sceneRecords"></div>
+        <button class="reset" id="resetButton"><i data-lucide="rotate-ccw" aria-hidden="true"></i> 结束本次体验并重新开始</button>
+      </aside>
+    </section>
+
+  </main>
+
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/lib/marked.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.3/dist/purify.min.js"></script>
+  <script>
+    const TOOLS = {
+      chatgpt: { video: "videos/chatgpt.mp4" },
+      codex: { video: "videos/codex.mp4" },
+      workbuddy: { video: "videos/workbuddy.mp4" },
+      jimeng: { video: "videos/jimeng.mp4" }
+    };
+
+    const state = {
+      sessionId: newSessionId(),
+      activeScene: "",
+      activeRecommendation: null,
+      completedScenes: [],
+      sending: false
+    };
+
+    function newSessionId() {
+      if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+      return "session-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+    }
+
+    const $ = id => document.getElementById(id);
+    const welcomeView = $("welcomeView");
+    const guideView = $("guideView");
+    const messages = $("messages");
+    const messageInput = $("messageInput");
+    const sendButton = $("sendButton");
+    const agentStatus = $("agentStatus");
+
+    function showView(name) {
+      welcomeView.classList.toggle("hidden", name !== "welcome");
+      guideView.classList.toggle("hidden", name !== "guide");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function renderMarkdown(target, content) {
+      if (window.marked && window.DOMPurify) {
+        target.classList.add("markdown");
+        target.innerHTML = DOMPurify.sanitize(marked.parse(content || ""));
+      } else {
+        target.textContent = content || "";
+      }
+    }
+
+    function addMessage(role, content, question = "", questionOptions = []) {
+      const message = document.createElement("div");
+      message.className = "message " + role;
+      const avatar = document.createElement("div");
+      avatar.className = "avatar";
+      avatar.textContent = role === "assistant" ? "AI" : "你";
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      renderMarkdown(bubble, content);
+      if (question) {
+        const questionEl = document.createElement("div");
+        questionEl.className = "question";
+        questionEl.textContent = question;
+        bubble.appendChild(questionEl);
+      }
+      if (questionOptions.length) {
+        const options = document.createElement("div");
+        options.className = "question-options";
+        questionOptions.forEach(option => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "question-option";
+          button.textContent = option;
+          button.addEventListener("click", () => {
+            options.querySelectorAll("button").forEach(item => item.disabled = true);
+            submitMessage(option);
+          });
+          options.appendChild(button);
+        });
+        bubble.appendChild(options);
+      }
+      message.append(avatar, bubble);
+      messages.appendChild(message);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function setSending(sending) {
+      state.sending = sending;
+      sendButton.disabled = sending;
+      messageInput.disabled = sending;
+      agentStatus.textContent = sending ? "正在思考" : "准备就绪";
+    }
+
+    function startGuide() {
+      showView("guide");
+      if (!messages.childElementCount) {
+        addMessage("assistant", "你好，请直接描述你想完成的工作。\n例如：整理会议纪要、写一份汇报、做数据处理脚本，或制作活动海报。\n\n请只使用虚构或脱敏的信息，我会从本中心可体验的工具中为你推荐一个，并带你完成练习。");
+      }
+      setTimeout(() => messageInput.focus(), 250);
+    }
+
+    function renderRecords() {
+      const records = $("sceneRecords");
+      records.innerHTML = "";
+      if (!state.completedScenes.length) {
+        const empty = document.createElement("div");
+        empty.className = "empty-record";
+        empty.textContent = "尚未完成场景。完成当前练习后，记录会显示在这里。";
+        records.appendChild(empty);
+        return;
+      }
+      state.completedScenes.forEach(scene => {
+        const item = document.createElement("div");
+        item.className = "scene-record";
+        const title = document.createElement("b");
+        title.textContent = scene.title;
+        const meta = document.createElement("span");
+        meta.textContent = "已体验 · " + scene.toolName;
+        item.append(title, meta);
+        records.appendChild(item);
+      });
+    }
+
+    function renderRecommendation(data) {
+      const recommendation = data.recommendation;
+      if (!recommendation) return;
+      state.activeScene = data.sceneTitle;
+      state.activeRecommendation = recommendation;
+
+      const panel = document.createElement("section");
+      panel.className = "recommendation";
+      const top = document.createElement("div");
+      top.className = "recommendation-top";
+      const title = document.createElement("div");
+      title.className = "recommendation-title";
+      title.textContent = "推荐使用：" + recommendation.name;
+      const tag = document.createElement("span");
+      tag.className = "tool-tag";
+      tag.textContent = recommendation.tag;
+      top.append(title, tag);
+      const reason = document.createElement("p");
+      reason.textContent = recommendation.reason;
+      panel.append(top, reason);
+
+      const benchmark = document.createElement("div");
+      benchmark.className = "benchmarks";
+      const label = document.createElement("b");
+      label.textContent = "对标参考（不可体验）：";
+      benchmark.appendChild(label);
+      if (recommendation.benchmarks.length) {
+        recommendation.benchmarks.forEach(name => {
+          const item = document.createElement("span");
+          item.className = "benchmark-item";
+          item.textContent = name;
+          benchmark.appendChild(item);
+        });
+      } else {
+        const empty = document.createElement("span");
+        empty.textContent = " 暂无对标产品";
+        benchmark.appendChild(empty);
+      }
+      panel.appendChild(benchmark);
+
+      const actions = document.createElement("div");
+      actions.className = "recommendation-actions";
+      const practice = document.createElement("button");
+      practice.className = "small-button primary";
+      practice.type = "button";
+      practice.textContent = "生成练习提示词";
+      practice.addEventListener("click", () => renderPractice(data, panel));
+      const demo = document.createElement("button");
+      demo.className = "small-button";
+      demo.type = "button";
+      demo.textContent = "观看演示";
+      demo.addEventListener("click", () => renderDemo(recommendation.toolId, panel));
+      actions.append(practice, demo);
+      panel.appendChild(actions);
+      messages.appendChild(panel);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function renderPractice(data, anchor) {
+      const existing = anchor.nextElementSibling;
+      if (existing && existing.classList.contains("practice")) {
+        existing.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        return;
+      }
+      const recommendation = data.recommendation;
+      const practice = document.createElement("section");
+      practice.className = "practice";
+      const heading = document.createElement("h3");
+      heading.textContent = "脱敏练习";
+      const instruction = document.createElement("p");
+      instruction.textContent = "将下方内容复制到 " + recommendation.name + "，再用虚构或脱敏材料替换方括号中的内容。";
+      const prompt = document.createElement("div");
+      prompt.className = "prompt";
+      prompt.textContent = recommendation.practicePrompt || "请根据以下脱敏任务目标，先提出一个关键澄清问题；信息足够后，给出结构化初稿和核对清单。\n任务目标：[请填写脱敏后的任务描述]";
+      const copy = document.createElement("button");
+      copy.className = "small-button";
+      copy.type = "button";
+      copy.textContent = "复制提示词";
+      copy.addEventListener("click", () => copyPrompt(prompt.textContent, copy));
+      practice.append(heading, instruction, prompt, copy);
+      if (recommendation.practiceSteps.length) {
+        const list = document.createElement("ol");
+        recommendation.practiceSteps.forEach(step => {
+          const item = document.createElement("li");
+          item.textContent = step;
+          list.appendChild(item);
+        });
+        practice.appendChild(list);
+      }
+      const complete = document.createElement("button");
+      complete.className = "small-button primary";
+      complete.type = "button";
+      complete.style.marginTop = "12px";
+      complete.textContent = "我已完成本场景";
+      complete.addEventListener("click", () => completeScene(complete));
+      practice.appendChild(complete);
+      anchor.insertAdjacentElement("afterend", practice);
+      practice.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    function renderDemo(toolId, anchor) {
+      const tool = TOOLS[toolId];
+      if (!tool) return;
+      const existing = anchor.querySelector(".video-wrap");
+      if (existing) {
+        existing.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        return;
+      }
+      const wrap = document.createElement("div");
+      wrap.className = "video-wrap";
+      const video = document.createElement("video");
+      video.controls = true;
+      video.preload = "metadata";
+      video.src = tool.video;
+      const help = document.createElement("div");
+      help.className = "video-help";
+      help.textContent = "若尚未配置演示视频，请将对应文件放入 videos/ 目录。";
+      help.style.display = "none";
+      video.addEventListener("error", () => help.style.display = "block");
+      wrap.append(video, help);
+      anchor.appendChild(wrap);
+      video.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    async function copyPrompt(value, button) {
+      try {
+        await navigator.clipboard.writeText(value);
+        button.textContent = "已复制";
+      } catch {
+        button.textContent = "请手动复制";
+      }
+      setTimeout(() => button.textContent = "复制提示词", 1500);
+    }
+
+    function completeScene(button) {
+      if (!state.activeRecommendation || button.disabled) return;
+      const exists = state.completedScenes.some(scene => scene.title === state.activeScene && scene.toolName === state.activeRecommendation.name);
+      if (!exists) {
+        state.completedScenes.push({ title: state.activeScene, toolName: state.activeRecommendation.name });
+        renderRecords();
+      }
+      button.disabled = true;
+      button.textContent = "本场景已完成";
+      addMessage("assistant", "已记录“" + state.activeScene + "”的体验。你可以继续描述下一个想完成的工作，我会将它作为一个新场景来推荐和带练。");
+      state.activeScene = "";
+      state.activeRecommendation = null;
+      state.sessionId = newSessionId();
+      messageInput.placeholder = "继续描述下一个场景……";
+      messageInput.focus();
+    }
+
+    async function submitMessage(message) {
+      if (!message || state.sending) return;
+      addMessage("user", message);
+      messageInput.value = "";
+      setSending(true);
+      try {
+        const result = await fetch("/api/guide/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message,
+            sessionId: state.sessionId,
+            activeScene: state.activeScene,
+            completedScenes: state.completedScenes
+          })
+        });
+        const data = await result.json();
+        if (!result.ok) throw new Error(data?.error?.message || "对话服务暂时不可用，请稍后重试。");
+        addMessage("assistant", data.reply, data.question, data.questionOptions || []);
+        state.activeScene = data.sceneTitle || state.activeScene;
+        renderRecommendation(data);
+      } catch (error) {
+        addMessage("assistant", "暂时无法连接导览 Agent。\n" + error.message);
+      } finally {
+        setSending(false);
+        messageInput.focus();
+      }
+    }
+
+    function sendMessage(event) {
+      event.preventDefault();
+      submitMessage(messageInput.value.trim());
+    }
+
+    $("startButton").addEventListener("click", startGuide);
+    $("resetButton").addEventListener("click", () => {
+      state.activeScene = "";
+      state.activeRecommendation = null;
+      state.completedScenes = [];
+      state.sessionId = newSessionId();
+      messages.innerHTML = "";
+      messageInput.value = "";
+      messageInput.placeholder = "描述你希望完成的任务……";
+      renderRecords();
+      showView("welcome");
+    });
+    $("chatForm").addEventListener("submit", sendMessage);
+    messageInput.addEventListener("keydown", event => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") sendMessage(event);
+    });
+    renderRecords();
+    if (window.lucide) window.lucide.createIcons();
+  </script>
+</body>
+</html>

@@ -67,11 +67,14 @@ app.post("/api/guide/chat/stream", async (request, response, next) => {
   const startedAt = Date.now();
   let auditId = null;
   let slotAcquired = false;
+  let heartbeat = null;
   try {
     const message = text(request.body?.message, 2000);
     const sessionId = normaliseSessionId(request.body?.sessionId);
     const userName = normaliseUserName(request.body?.userName);
     const activeScene = text(request.body?.activeScene, 300);
+    const interestArea = text(request.body?.interestArea, 100);
+    const interestSelection = request.body?.interestSelection === true;
     const initialTurn = request.body?.initialTurn === true;
     if (!message) {
       response.status(400).json({ error: { code: "invalid_message", message: "请描述您想完成的工作。" } });
@@ -95,21 +98,25 @@ app.post("/api/guide/chat/stream", async (request, response, next) => {
     }
     inFlightCalls += 1;
     slotAcquired = true;
-    const intent = classifyUserIntent({ message, activeScene, initialTurn });
-    auditId = await startAudit({ request, message, sessionId, startedAt, activeScene, intent });
+    const intent = classifyUserIntent({ message, activeScene, interestArea, interestSelection, initialTurn });
+    auditId = await startAudit({ request, message, sessionId, startedAt, activeScene, interestArea, intent });
     response.status(200).set({ "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
     response.flushHeaders();
+    heartbeat = setInterval(() => {
+      if (!response.writableEnded && !response.destroyed) response.write(": keep-alive\n\n");
+    }, 15000);
     writeSse(response, { type: "status", message: "正在分析你的任务" });
-    for await (const event of streamGuide({ sessionId, message, initialTurn, activeScene, intent })) {
+    for await (const event of streamGuide({ sessionId, message, initialTurn, activeScene, interestArea, intent })) {
       if (event.type === "chunk") writeSse(response, event);
       if (event.type === "done") {
-        const result = normaliseAgentResponse(event.raw, { intent, message });
+        const result = normaliseAgentResponse(event.raw, { intent, message, interestArea });
         await finishAudit(auditId, { status: "succeeded", response: result, latencyMs: Date.now() - startedAt });
         writeSse(response, { type: "done", result });
       }
     }
     response.end();
   } catch (error) {
+    console.error("Guide stream failed:", error);
     if (auditId) {
       try { await finishAudit(auditId, { status: "failed", error, latencyMs: Date.now() - startedAt }); }
       catch (auditError) { console.error("调用失败记录更新失败:", auditError.message); }
@@ -119,6 +126,7 @@ app.post("/api/guide/chat/stream", async (request, response, next) => {
       response.end();
     } else next(error);
   } finally {
+    if (heartbeat) clearInterval(heartbeat);
     if (slotAcquired) inFlightCalls = Math.max(0, inFlightCalls - 1);
   }
 });
@@ -132,6 +140,8 @@ app.post("/api/guide/chat", async (request, response, next) => {
     const sessionId = normaliseSessionId(request.body?.sessionId);
     const userName = normaliseUserName(request.body?.userName);
     const activeScene = text(request.body?.activeScene, 300);
+    const interestArea = text(request.body?.interestArea, 100);
+    const interestSelection = request.body?.interestSelection === true;
     const initialTurn = request.body?.initialTurn === true;
     if (!message) {
       response.status(400).json({ error: { code: "invalid_message", message: "请描述您想完成的工作。" } });
@@ -157,11 +167,11 @@ app.post("/api/guide/chat", async (request, response, next) => {
     }
     inFlightCalls += 1;
     slotAcquired = true;
-    const intent = classifyUserIntent({ message, activeScene, initialTurn });
-    auditId = await startAudit({ request, message, sessionId, startedAt, activeScene, intent });
+    const intent = classifyUserIntent({ message, activeScene, interestArea, interestSelection, initialTurn });
+    auditId = await startAudit({ request, message, sessionId, startedAt, activeScene, interestArea, intent });
 
-    const raw = await runGuide({ sessionId, message, initialTurn, activeScene, intent });
-    const result = normaliseAgentResponse(typeof raw === "string" ? parseModelJson(raw) : raw, { intent, message });
+    const raw = await runGuide({ sessionId, message, initialTurn, activeScene, interestArea, intent });
+    const result = normaliseAgentResponse(typeof raw === "string" ? parseModelJson(raw) : raw, { intent, message, interestArea });
     await finishAudit(auditId, { status: "succeeded", response: result, latencyMs: Date.now() - startedAt });
     response.set("Cache-Control", "no-store").json(result);
   } catch (error) {
@@ -212,9 +222,9 @@ function writeSse(response, payload) {
   response.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-async function startAudit({ request, message, sessionId, startedAt, activeScene, intent }) {
+async function startAudit({ request, message, sessionId, startedAt, activeScene, interestArea, intent }) {
   const userName = normaliseUserName(request.body?.userName);
-  const payload = { sessionId, activeScene, intent, completedScenes: request.body?.completedScenes || [] };
+  const payload = { sessionId, activeScene, interestArea, intent, completedScenes: request.body?.completedScenes || [] };
   const result = await auditPool.query(
     "INSERT INTO agent_call_logs (model, status, message, session_id, user_name, request_payload, started_at) VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7 / 1000.0)) RETURNING id",
     [MODEL, "started", message, sessionId, userName, payload, startedAt]
@@ -313,16 +323,16 @@ function parseModelJson(content) {
   throw error;
 }
 
-function normaliseAgentResponse(raw, { intent, message = "" } = {}) {
-  if (intent?.type === "request_next_scene") {
+function normaliseAgentResponse(raw, { intent, message = "", interestArea = "" } = {}) {
+  if (intent?.type === "request_next_scene" || intent?.type === "choose_interest_area") {
     return {
       phase: "clarify",
-      reply: text(raw.reply, 1800) || "好的，进入下一个场景选择。请选择你想继续体验的方向。",
-      question: text(raw.question, 400) || "你想先体验哪个场景？",
+      reply: text(raw.reply, 1800) || "我们先从你关心的领域开始。请选择一个方向，我会继续带你梳理具体需求。",
+      question: text(raw.question, 400) || "你想先从哪个领域开始？",
       questionOptions: Array.isArray(raw.questionOptions) ? raw.questionOptions.map(option => text(option, 120)).filter(Boolean).slice(0, 6) : [],
       sceneTitle: "",
       recommendation: null,
-      sceneSelection: true
+      interestSelection: true
     };
   }
   const toolId = typeof raw.recommendedTool === "string" && ALLOWED_TOOLS[raw.recommendedTool]
@@ -355,6 +365,16 @@ function normaliseAgentResponse(raw, { intent, message = "" } = {}) {
     recommendation,
     sceneSelection: Boolean(raw.sceneSelection)
   };
+  if (intent?.type === "select_interest_area" && (result.phase !== "clarify" || result.recommendation || (!result.question && !result.questionOptions.length))) {
+    return {
+      phase: "clarify",
+      reply: `好的，我们先从“${text(interestArea || message, 100)}”开始。`,
+      question: "在这个领域里，你最想改善哪一类业务环节或管理问题？",
+      questionOptions: ["提升工作效率", "辅助经营决策", "优化团队协作", "还不确定，先看看方向"],
+      sceneTitle: "",
+      recommendation: null
+    };
+  }
   if (intent?.type === "start_new_scene" && (result.phase !== "clarify" || result.recommendation)) {
     return {
       phase: "clarify",
@@ -368,11 +388,12 @@ function normaliseAgentResponse(raw, { intent, message = "" } = {}) {
   if (intent?.type === "complete_without_active_scene") {
     return {
       phase: "clarify",
-      reply: "当前还没有进行中的场景。请先描述你想完成的任务。",
-      question: "你想从什么工作任务开始？",
-      questionOptions: [],
-      sceneTitle: "当前体验场景",
-      recommendation: null
+      reply: "当前还没有进行中的场景。请先选择你关心的领域。",
+      question: "你想先从哪个领域开始？",
+      questionOptions: ["质量管理", "人力资源", "生产运营", "BP & IT", "采购与供应链", "经营管理"],
+      sceneTitle: "",
+      recommendation: null,
+      interestSelection: true
     };
   }
   return result;

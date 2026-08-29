@@ -18,6 +18,15 @@ const TOOLS = {
   jimeng: { video: "/videos/jimeng.mp4" }
 };
 
+const INTEREST_AREAS = [
+  ["质量管理", "质量体系、问题分析、改善闭环"],
+  ["人力资源", "招聘培训、绩效管理、组织协作"],
+  ["生产运营", "排产计划、现场管理、效率改善"],
+  ["BP & IT", "业务支持、数字化、系统与流程"],
+  ["采购与供应链", "供应商管理、成本控制、交付协同"],
+  ["经营管理", "经营分析、预算计划、管理决策"]
+];
+
 function newSessionId() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
   return `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -148,6 +157,21 @@ function MessageBubble({ message, onOption }) {
   );
 }
 
+function InterestSelector({ onSelect }) {
+  return (
+    <section className="interest-panel" aria-labelledby="interest-title">
+      <div className="interest-heading">
+        <div className="starter-label">先选择你关心的方向</div>
+        <h3 id="interest-title">你想从哪个领域开始？</h3>
+        <p>选择后，我会围绕这个领域逐步了解你的实际工作场景。</p>
+      </div>
+      <div className="interest-grid">
+        {INTEREST_AREAS.map(([title, detail], index) => <button key={title} type="button" onClick={() => onSelect(title)}><span className="interest-index">0{index + 1}</span><span className="interest-copy"><b>{title}</b><small>{detail}</small></span><ArrowRight size={16} /></button>)}
+      </div>
+    </section>
+  );
+}
+
 function Recommendation({ data, active, onComplete }) {
   const [showPractice, setShowPractice] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
@@ -191,7 +215,7 @@ function Journey({ completedScenes, onComplete }) {
     <aside className="journey">
       <div className="journey-kicker">体验进度</div>
       <h2>本次体验记录</h2>
-      <p>完成一个场景后，会保留简要记录；新的任务默认独立处理。</p>
+      <p>完成一个场景后，会保留简要记录；新的体验从关注领域重新开始。</p>
       {!completedScenes.length ? <div className="empty-record">尚未完成场景。完成当前练习后，记录会显示在这里。</div> : completedScenes.map(scene => <div className="scene-record" key={`${scene.title}-${scene.toolName}`}><b>{scene.title}</b><span>已体验 · {scene.toolName}</span></div>)}
       <button className="reset" onClick={onComplete}><Check size={15} /> 完成本次体验</button>
     </aside>
@@ -200,6 +224,8 @@ function Journey({ completedScenes, onComplete }) {
 
 function Guide({ userName, onComplete }) {
   const [sessionId, setSessionId] = useState(newSessionId);
+  const [interestArea, setInterestArea] = useState("");
+  const [showInterestSelector, setShowInterestSelector] = useState(true);
   const [activeScene, setActiveScene] = useState("");
   const [activeRecommendation, setActiveRecommendation] = useState(null);
   const [completedScenes, setCompletedScenes] = useState([]);
@@ -214,19 +240,20 @@ function Guide({ userName, onComplete }) {
   useEffect(() => { addWelcomeMessage(); }, []);
 
   function addWelcomeMessage() {
-    setMessages([{ role: "assistant", content: "你好，请直接描述你想完成的工作。\n例如：整理会议纪要、写一份汇报、做数据处理脚本，或制作活动海报。\n\n请只使用虚构或脱敏的信息，我会从本中心可体验的工具中为你推荐一个，并带你完成练习。" }]);
+    setMessages([{ role: "assistant", content: "你好，我会先了解你关心的工作领域，再一步一步梳理具体需求，最后为你推荐最合适的工具。请先选择一个领域开始。" }]);
   }
 
-  async function submitMessage(value) {
+  async function submitMessage(value, { interestSelection = false, selectedArea = "" } = {}) {
     const message = value.trim();
     if (!message || sending) return;
     const initialTurn = messages.length === 1;
+    const requestArea = selectedArea || interestArea;
     const streamId = `stream-${Date.now()}`;
     setInput("");
     setSending(true);
     setMessages(previous => [...previous, { role: "user", content: message }, { id: streamId, role: "assistant", content: "", streaming: true }]);
     try {
-      const response = await fetch("/api/guide/chat/stream", { method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" }, body: JSON.stringify({ message, sessionId, userName, activeScene, completedScenes, initialTurn }) });
+      const response = await fetch("/api/guide/chat/stream", { method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" }, body: JSON.stringify({ message, sessionId, userName, activeScene, completedScenes, initialTurn, interestArea: requestArea, interestSelection }) });
       if (!response.ok) {
         const body = await response.text();
         let data = null;
@@ -254,11 +281,25 @@ function Guide({ userName, onComplete }) {
             completed = true;
             const data = event.result;
             setMessages(previous => previous.map(item => item.id === streamId ? { ...item, streaming: false, content: data.reply, question: data.question, questionOptions: data.questionOptions, recommendation: data.recommendation } : item));
-            if (data.sceneSelection) {
+            if (data.interestSelection) {
+              setInterestArea("");
+              setShowInterestSelector(true);
+              setActiveScene("");
+              setActiveRecommendation(null);
+            } else if (interestSelection) {
+              setInterestArea(requestArea);
+              setShowInterestSelector(false);
+              setActiveScene("");
+              setActiveRecommendation(null);
+            } else if (data.sceneSelection) {
+              setInterestArea("");
+              setShowInterestSelector(true);
               setActiveScene("");
               setActiveRecommendation(null);
             } else {
-              setActiveScene(data.sceneTitle || activeScene);
+              if (data.recommendation || data.phase === "recommend" || data.phase === "teach") {
+                setActiveScene(data.sceneTitle || activeScene);
+              }
               setActiveRecommendation(data.recommendation || null);
             }
           }
@@ -268,15 +309,31 @@ function Guide({ userName, onComplete }) {
       }
       if (!completed) throw new Error("流式响应提前结束，请重试。");
     } catch (error) {
-      setMessages(previous => previous.map(item => item.id === streamId ? { ...item, streaming: false, content: `暂时无法连接导览 Agent。\n${error.message}` } : item));
+      setMessages(previous => previous.map(item => {
+        if (item.id !== streamId) return item;
+        const partialContent = item.content.trim();
+        return {
+          ...item,
+          streaming: false,
+          content: partialContent
+            ? `${item.content}\n\n本轮连接提前结束，请重新发送刚才的回答。`
+            : `暂时无法连接导览 Agent。\n${error.message}`
+        };
+      }));
     }
     finally { setSending(false); inputRef.current?.focus(); }
+  }
+
+  function selectInterestArea(area) {
+    setInterestArea(area);
+    setShowInterestSelector(false);
+    submitMessage(area, { interestSelection: true, selectedArea: area });
   }
 
   function completeScene() {
     if (!activeRecommendation || !activeScene) return;
     setCompletedScenes(previous => previous.some(scene => scene.title === activeScene && scene.toolName === activeRecommendation.name) ? previous : [...previous, { title: activeScene, toolName: activeRecommendation.name }]);
-    setMessages(previous => [...previous, { role: "assistant", content: `已记录“${activeScene}”的体验。你可以继续描述下一个想完成的工作，我会将它作为一个新场景来推荐和带练。` }]);
+    setMessages(previous => [...previous, { role: "assistant", content: `已记录“${activeScene}”的体验。你可以继续选择关注领域，开始下一个场景。` }]);
     setActiveScene(""); setActiveRecommendation(null); setSessionId(newSessionId());
   }
 
@@ -285,15 +342,10 @@ function Guide({ userName, onComplete }) {
       <section className="conversation">
         <div className="messages" ref={messagesRef} aria-live="polite">
           <div className="message-stack">{messages.map((message, index) => <React.Fragment key={message.id || `${message.role}-${index}`}><MessageBubble message={message} onOption={submitMessage} />{message.recommendation && <Recommendation data={message} active={activeRecommendation === message.recommendation} onComplete={completeScene} />}</React.Fragment>)}
-            {messages.length === 1 && <div className="starter-panel">
-              <div className="starter-label">从一个具体任务开始</div>
-              <div className="starter-list">
-                {[["整理一份会议纪要", "把零散记录整理成结构化纪要"], ["写一份工作汇报", "梳理重点并生成汇报初稿"], ["制作一张活动海报", "从主题出发准备创意素材"]].map(([title, detail]) => <button key={title} type="button" onClick={() => submitMessage(title)}><span><b>{title}</b><small>{detail}</small></span><ArrowRight size={16} /></button>)}
-              </div>
-            </div>}
+            {showInterestSelector && <InterestSelector onSelect={selectInterestArea} />}
           </div>
         </div>
-        <form className="composer" onSubmit={event => { event.preventDefault(); submitMessage(input); }}><div className="composer-shell"><textarea ref={inputRef} value={input} maxLength={2000} disabled={sending} onChange={event => setInput(event.target.value)} onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); submitMessage(input); } }} placeholder="描述你希望完成的任务……" aria-label="描述你希望完成的任务" /><div className="composer-foot"><span>仅使用虚构或脱敏材料</span><button className="send-button" aria-label="发送消息" title="发送消息" disabled={sending || !input.trim()} type="submit"><ArrowUp size={18} /></button></div></div></form>
+        <form className="composer" onSubmit={event => { event.preventDefault(); submitMessage(input); }}><div className="composer-shell"><textarea ref={inputRef} value={input} maxLength={2000} disabled={sending} onChange={event => setInput(event.target.value)} onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); submitMessage(input); } }} placeholder="补充你想解决的业务问题……" aria-label="补充你想解决的业务问题" /><div className="composer-foot"><span>仅使用虚构或脱敏材料</span><button className="send-button" aria-label="发送消息" title="发送消息" disabled={sending || !input.trim()} type="submit"><ArrowUp size={18} /></button></div></div></form>
       </section>
       <Journey completedScenes={completedScenes} onComplete={onComplete} />
     </section>

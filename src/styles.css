@@ -128,10 +128,22 @@ button, textarea { font: inherit; } button { cursor: pointer; } button:focus-vis
 .starter-list b, .starter-list small { display: block; }
 .starter-list b { font-size: 13px; }
 .starter-list small { margin-top: 5px; color: #849087; font-size: 11px; line-height: 1.45; }
+.interest-panel { margin: 34px 0 0 40px; padding: 24px 0 0; border-top: 1px solid #e1e5de; }
+.interest-heading h3 { margin: 5px 0 5px; color: var(--deep); font-size: 21px; letter-spacing: -.02em; }
+.interest-heading p { margin: 0; color: #7c887f; font-size: 13px; line-height: 1.6; }
+.interest-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.interest-grid button { min-height: 75px; display: grid; grid-template-columns: 30px minmax(0, 1fr) 16px; align-items: center; gap: 10px; padding: 13px 14px; color: #30453e; background: #fff; border: 1px solid #dce4dc; border-radius: 10px; text-align: left; transition: border-color .2s ease, background .2s ease, transform .2s ease; }
+.interest-grid button:hover { border-color: #8bb8ad; background: #f5faf7; transform: translateY(-2px); }
+.interest-grid button svg { color: var(--teal); }
+.interest-index { color: #92a099; font: 700 11px/1 "DM Sans", sans-serif; letter-spacing: .06em; }
+.interest-copy b, .interest-copy small { display: block; }
+.interest-copy b { font-size: 13px; }
+.interest-copy small { margin-top: 5px; color: #849087; font-size: 11px; line-height: 1.45; }
 .composer-shell { width: min(840px, 100%); margin: 0 auto; padding: 5px; border: 1px solid #d5ded6; border-radius: 18px; background: #fff; box-shadow: 0 8px 24px rgba(37, 54, 44, .07); }
 .composer-shell textarea { min-height: 68px; max-height: 170px; border: 0; border-radius: 13px; box-shadow: none; }
 .composer-shell textarea:focus { border: 0; box-shadow: none; }
 .composer-shell .composer-foot { padding: 0 7px 3px; }
 @media (max-width: 900px) { .workspace { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }.conversation-head { padding-left: 24px; padding-right: 24px; }.messages { padding-left: 24px; padding-right: 24px; }.composer { padding-left: 24px; padding-right: 24px; }.journey { min-height: 150px; } }
 @media (max-width: 700px) { .starter-list { grid-template-columns: 1fr; }.starter-list button { min-height: 60px; } }
-@media (max-width: 540px) { .conversation-head { align-items: flex-start; padding: 20px 18px 17px; }.conversation-head h2 { font-size: 23px; }.conversation-meta { gap: 7px; flex-direction: column-reverse; align-items: flex-end; }.session-label { display: none; }.messages { padding: 25px 18px 18px; }.message { max-width: 100%; }.message.user { max-width: 94%; }.recommendation { max-width: 100%; margin-left: 0; padding: 17px; }.starter-panel { margin-left: 40px; }.composer { padding: 13px 18px 18px; }.composer-foot span { max-width: 220px; } }
+@media (max-width: 700px) { .interest-grid { grid-template-columns: 1fr; } }
+@media (max-width: 540px) { .conversation-head { align-items: flex-start; padding: 20px 18px 17px; }.conversation-head h2 { font-size: 23px; }.conversation-meta { gap: 7px; flex-direction: column-reverse; align-items: flex-end; }.session-label { display: none; }.messages { padding: 25px 18px 18px; }.message { max-width: 100%; }.message.user { max-width: 94%; }.recommendation { max-width: 100%; margin-left: 0; padding: 17px; }.starter-panel, .interest-panel { margin-left: 0; }.composer { padding: 13px 18px 18px; }.composer-foot span { max-width: 220px; } }

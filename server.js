@@ -41,6 +41,15 @@ const ALLOWED_TOOLS = {
   }
 };
 
+const INTEREST_STARTER_OPTIONS = {
+  "质量管理": ["质量问题分析与根因定位", "质量数据与报表分析", "纠正预防措施与改善闭环", "检查、审核与质量文档"],
+  "人力资源": ["招聘与人才筛选", "培训与能力发展", "绩效沟通与反馈", "员工信息与制度文档"],
+  "生产运营": ["排产计划与交付协调", "现场异常分析", "效率与产能改善", "标准作业与现场文档"],
+  "BP & IT": ["经营数据与分析报告", "业务流程优化", "系统需求与方案整理", "跨部门协作与知识管理"],
+  "采购与供应链": ["供应商评估与管理", "采购成本与比价分析", "交付风险与进度跟踪", "采购文档与合同要点整理"],
+  "经营管理": ["经营数据与趋势分析", "预算与计划编制", "经营会议材料整理", "管理决策信息汇总"]
+};
+
 const auditPool = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL, max: Number.parseInt(process.env.DB_POOL_MAX || "20", 10), idleTimeoutMillis: 30000, connectionTimeoutMillis: 5000 })
   : null;
@@ -323,6 +332,14 @@ function parseModelJson(content) {
   throw error;
 }
 
+function removeTrailingQuestion(reply, question) {
+  const value = text(reply, 1800);
+  const target = text(question, 400);
+  if (!value || !target) return value;
+  const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value.replace(new RegExp(`(?:\\s*\\*{0,2})${escaped}(?:\\*{0,2})\\s*$`), "").trim();
+}
+
 function normaliseAgentResponse(raw, { intent, message = "", interestArea = "" } = {}) {
   if (intent?.type === "request_next_scene" || intent?.type === "choose_interest_area") {
     return {
@@ -344,6 +361,7 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "" }
   const questionOptions = Array.isArray(raw.questionOptions)
     ? raw.questionOptions.map(option => text(option, 120)).filter(Boolean).slice(0, 4)
     : [];
+  const question = text(raw.question, 400);
   const phase = ["clarify", "recommend", "teach"].includes(raw.phase)
     ? raw.phase
     : (toolId ? "recommend" : "clarify");
@@ -358,19 +376,36 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "" }
   } : null;
   const result = {
     phase,
-    reply: text(raw.reply, 1800) || (toolId ? "我已为你匹配到合适的体验工具。" : "请再补充一点你希望完成的任务。"),
-    question: text(raw.question, 400),
+    reply: removeTrailingQuestion(text(raw.reply, 1800) || (toolId ? "我已为你匹配到合适的体验工具。" : "请再补充一点你希望完成的任务。"), question),
+    question,
     questionOptions,
     sceneTitle: text(raw.sceneTitle, 100) || "当前体验场景",
     recommendation,
     sceneSelection: Boolean(raw.sceneSelection)
   };
-  if (intent?.type === "select_interest_area" && (result.phase !== "clarify" || result.recommendation || (!result.question && !result.questionOptions.length))) {
+  if (intent?.type === "select_interest_area") {
+    const area = text(interestArea || message, 100);
+    const starterQuestion = result.question || "在这个领域里，你最想改善哪一类业务环节或管理问题？";
+    const starterOptions = result.questionOptions.length
+      ? result.questionOptions
+      : (INTEREST_STARTER_OPTIONS[area] || ["提升工作效率", "辅助经营决策", "优化团队协作", "还不确定，先看看方向"]);
+    const starterReply = removeTrailingQuestion(result.reply, starterQuestion);
+    if (result.phase !== "clarify" || result.recommendation) {
+      return {
+        phase: "clarify",
+        reply: `好的，我们先从“${area}”开始。`,
+        question: starterQuestion,
+        questionOptions: starterOptions,
+        sceneTitle: "",
+        recommendation: null
+      };
+    }
     return {
+      ...result,
       phase: "clarify",
-      reply: `好的，我们先从“${text(interestArea || message, 100)}”开始。`,
-      question: "在这个领域里，你最想改善哪一类业务环节或管理问题？",
-      questionOptions: ["提升工作效率", "辅助经营决策", "优化团队协作", "还不确定，先看看方向"],
+      reply: starterReply || `好的，我们先从“${area}”开始。`,
+      question: starterQuestion,
+      questionOptions: starterOptions,
       sceneTitle: "",
       recommendation: null
     };

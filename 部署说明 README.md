@@ -35,7 +35,7 @@ guidelines/
 
 ## 技术说明
 - 服务端：Node.js、Express、dotenv。
-- Agent：通过 DeepAgents JS 的 `createDeepAgent` 编排，使用 LangChain `ChatOpenAI` 适配 Qwen，默认模型为 `qwen-plus`。
+- Agent：通过 DeepAgents JS 的 `createDeepAgent` 编排，使用 LangChain `ChatOpenAI` 适配 Qwen，默认模型为 `qwen-plus`。如果使用 Qwen3（例如 `qwen3.8-max`），请保持 `QWEN_ENABLE_THINKING=false`；Qwen3 的 thinking 模式不支持导引 Agent 结构化输出所需的强制工具调用。
 - 测试：使用 Playwright 进行页面交互与响应式检查。
 - 安全：`.env`、视频素材和依赖目录均已加入 `.gitignore`。
 

@@ -161,9 +161,9 @@ function InterestSelector({ onSelect }) {
   return (
     <section className="interest-panel" aria-labelledby="interest-title">
       <div className="interest-heading">
-        <div className="starter-label">先选择你关心的方向</div>
-        <h3 id="interest-title">你想从哪个领域开始？</h3>
-        <p>选择后，我会围绕这个领域逐步了解你的实际工作场景。</p>
+        <div className="starter-label">还不确定从哪里开始？</div>
+        <h3 id="interest-title">选择一个关注领域</h3>
+        <p>也可以直接在下方描述明确任务，我会为你推荐合适的工具。</p>
       </div>
       <div className="interest-grid">
         {INTEREST_AREAS.map(([title, detail], index) => <button key={title} type="button" onClick={() => onSelect(title)}><span className="interest-index">0{index + 1}</span><span className="interest-copy"><b>{title}</b><small>{detail}</small></span><ArrowRight size={16} /></button>)}
@@ -194,9 +194,30 @@ function Recommendation({ data, active, onComplete }) {
 
 function Practice({ recommendation, active, onComplete }) {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState("");
   const prompt = recommendation.practicePrompt || "请根据以下脱敏任务目标，先提出一个关键澄清问题；信息足够后，给出结构化初稿和核对清单。\n任务目标：[请填写脱敏后的任务描述]";
   async function copyPrompt() {
-    try { await navigator.clipboard.writeText(prompt); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { setCopied(false); }
+    setCopyError("");
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(prompt);
+      else throw new Error("Clipboard API unavailable");
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = prompt;
+      textarea.setAttribute("readonly", "");
+      textarea.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none";
+      document.body.appendChild(textarea);
+      textarea.select();
+      textarea.setSelectionRange(0, textarea.value.length);
+      const succeeded = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      if (!succeeded) {
+        setCopyError("自动复制不可用，请长按提示词手动复制。");
+        return;
+      }
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   }
   return (
     <div className="practice">
@@ -204,6 +225,7 @@ function Practice({ recommendation, active, onComplete }) {
       <p>将下方内容复制到 {recommendation.name}，再用虚构或脱敏材料替换方括号中的内容。</p>
       <pre>{prompt}</pre>
       <button className="small-button" type="button" onClick={copyPrompt}>{copied ? <Check size={15} /> : <Copy size={15} />} {copied ? "已复制" : "复制提示词"}</button>
+      {copyError && <p className="copy-error" role="alert">{copyError}</p>}
       {recommendation.practiceSteps.length > 0 && <ol>{recommendation.practiceSteps.map(step => <li key={step}>{step}</li>)}</ol>}
       <button className="small-button primary complete-button" type="button" disabled={!active} onClick={onComplete}>我已完成本场景</button>
     </div>
@@ -231,6 +253,7 @@ function Guide({ userName, onComplete }) {
   const [completedScenes, setCompletedScenes] = useState([]);
   const [messages, setMessages] = useState([]);
   const [sending, setSending] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
   const [input, setInput] = useState("");
   const messagesRef = useRef(null);
   const inputRef = useRef(null);
@@ -240,7 +263,7 @@ function Guide({ userName, onComplete }) {
   useEffect(() => { addWelcomeMessage(); }, []);
 
   function addWelcomeMessage() {
-    setMessages([{ role: "assistant", content: "你好，我会先了解你关心的工作领域，再一步一步梳理具体需求，最后为你推荐最合适的工具。请先选择一个领域开始。" }]);
+    setMessages([{ role: "assistant", content: "你好。你可以选择关注领域，我会逐步帮你梳理需求；如果已有明确任务，也可以直接输入，我会推荐合适的工具并生成练习提示词。" }]);
   }
 
   async function submitMessage(value, { interestSelection = false, selectedArea = "" } = {}) {
@@ -274,11 +297,15 @@ function Guide({ userName, onComplete }) {
           const line = frame.split("\n").find(item => item.startsWith("data: "));
           if (!line) continue;
           const event = JSON.parse(line.slice(6));
+          if (event.type === "status") {
+            setStatusMessage(event.message || "正在分析你的任务");
+          }
           if (event.type === "chunk" && event.text) {
             setMessages(previous => previous.map(item => item.id === streamId ? { ...item, content: item.content + event.text } : item));
           }
           if (event.type === "done") {
             completed = true;
+            setStatusMessage("");
             const data = event.result;
             setMessages(previous => previous.map(item => item.id === streamId ? { ...item, streaming: false, content: data.reply, question: data.question, questionOptions: data.questionOptions, recommendation: data.recommendation } : item));
             if (data.interestSelection) {
@@ -299,16 +326,21 @@ function Guide({ userName, onComplete }) {
             } else {
               if (data.recommendation || data.phase === "recommend" || data.phase === "teach") {
                 setActiveScene(data.sceneTitle || activeScene);
+                setShowInterestSelector(false);
               }
               setActiveRecommendation(data.recommendation || null);
             }
           }
-          if (event.type === "error") throw new Error(event.message);
+          if (event.type === "error") {
+            setStatusMessage("");
+            throw new Error(event.message);
+          }
         }
         if (done) break;
       }
       if (!completed) throw new Error("流式响应提前结束，请重试。");
     } catch (error) {
+      setStatusMessage("");
       setMessages(previous => previous.map(item => {
         if (item.id !== streamId) return item;
         const partialContent = item.content.trim();
@@ -321,7 +353,7 @@ function Guide({ userName, onComplete }) {
         };
       }));
     }
-    finally { setSending(false); inputRef.current?.focus(); }
+    finally { setStatusMessage(""); setSending(false); inputRef.current?.focus(); }
   }
 
   function selectInterestArea(area) {
@@ -340,6 +372,7 @@ function Guide({ userName, onComplete }) {
   return (
     <section className="workspace" aria-label="对话式 AI 指引">
       <section className="conversation">
+        {statusMessage && <div className="status active stream-status" role="status" aria-live="polite"><i />{statusMessage}</div>}
         <div className="messages" ref={messagesRef} aria-live="polite">
           <div className="message-stack">{messages.map((message, index) => <React.Fragment key={message.id || `${message.role}-${index}`}><MessageBubble message={message} onOption={submitMessage} />{message.recommendation && <Recommendation data={message} active={activeRecommendation === message.recommendation} onComplete={completeScene} />}</React.Fragment>)}
             {showInterestSelector && <InterestSelector onSelect={selectInterestArea} />}

@@ -79,6 +79,7 @@ button, textarea { font: inherit; } button { cursor: pointer; } button:focus-vis
 .status { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; color: #347c72; background: #e5f1ed; border: 1px solid #cce2da; border-radius: 999px; font-size: 11px; font-weight: 800; }
 .status i { width: 6px; height: 6px; display: inline-block; border-radius: 50%; background: currentColor; }
 .status.active { color: #a66a0b; background: #fff3d8; border-color: #f1dfb4; }
+.stream-status { margin: 14px clamp(24px, 6vw, 86px) 0; align-self: flex-start; }
 .messages { min-height: 0; padding: 38px clamp(24px, 6vw, 86px) 28px; overflow-y: auto; overscroll-behavior: contain; background: #f7f8f4; }
 .message-stack { width: min(840px, 100%); margin: 0 auto; }
 .message { max-width: 760px; gap: 12px; margin-bottom: 28px; }
@@ -100,6 +101,7 @@ button, textarea { font: inherit; } button { cursor: pointer; } button:focus-vis
 .small-button { border-radius: 8px; transition: background .2s ease, transform .2s ease; }
 .small-button:hover { transform: translateY(-1px); }
 .practice { border-radius: 9px; }
+.copy-error { margin: 8px 0 0; color: #a54938; font-size: 13px; }
 .composer { padding: 15px clamp(24px, 6vw, 86px) 24px; background: #f7f8f4; border-top: 1px solid #e6e6dd; }
 .composer textarea { min-height: 82px; max-height: 190px; padding: 15px 17px; border: 1px solid #cfd8d0; border-radius: 15px; background: #fff; box-shadow: 0 5px 18px rgba(38, 55, 45, .06); font-size: 15px; transition: border-color .2s ease, box-shadow .2s ease; }
 .composer textarea:focus { border-color: #77aaa0; box-shadow: 0 0 0 3px rgba(46, 139, 134, .1), 0 5px 18px rgba(38, 55, 45, .06); }

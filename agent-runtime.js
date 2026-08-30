@@ -9,9 +9,16 @@ const { PostgresSaver } = require("@langchain/langgraph-checkpoint-postgres");
 const MODEL = process.env.QWEN_MODEL || "qwen-plus";
 const QWEN_API_KEY = process.env.QWEN_API_KEY || "";
 const QWEN_BASE_URL = process.env.QWEN_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1";
+const ENABLE_THINKING = /^(1|true|yes)$/i.test(process.env.QWEN_ENABLE_THINKING || "false");
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const ALLOWED_TOOL_IDS = ["chatgpt", "codex", "workbuddy", "jimeng"];
 const INTEREST_AREAS = ["质量管理", "人力资源", "生产运营", "BP & IT", "采购与供应链", "经营管理"];
+
+// Qwen3 rejects forced tool_choice values while thinking is enabled. Keep
+// thinking off for this tool-using Agent unless a compatible model is selected.
+const MODEL_KWARGS = /^qwen3(?:[-.]|$)/i.test(MODEL)
+  ? { extra_body: { enable_thinking: ENABLE_THINKING } }
+  : {};
 
 const NEXT_STEP_ADVISOR_INSTRUCTIONS = [
   "你是导引 Agent 内部的下一步建议 Agent，不直接与用户对话，也不负责最终措辞。",
@@ -22,32 +29,18 @@ const NEXT_STEP_ADVISOR_INSTRUCTIONS = [
 ].join("\n");
 
 const GUIDE_INSTRUCTIONS = [
-  "你是面向集团公司经理的 AI 体验中心导引 Agent。用户进入会话后先选择关注领域，你要围绕该领域通过多轮对话理解业务问题，逐步引导用户形成一个可实践的具体需求，最后再推荐工具。",
+  "你是面向集团公司经理的 AI 体验中心导引 Agent。用户可以先选择关注领域，也可以直接描述明确的业务场景。对于领域选择，你要通过多轮对话理解业务问题；对于明确场景，你要直接推荐工具并生成练习提示词。",
   "关注领域包括：质量管理、人力资源、生产运营、BP & IT、采购与供应链、经营管理。领域选择本身不是具体任务。",
   "用户真正可以体验的工具只有 ChatGPT、Codex、WorkBuddy、即梦AI。豆包、catlgpt、opencode、大头虾只能作为不可体验的对标参考，绝不能推荐用户去使用。",
   "用户刚选择关注领域时，信息绝对不足：先询问该领域中最想改善的业务环节或管理问题，再逐步追问目标、对象、已有材料、限制条件和期望产出；这一轮不得推荐工具、生成练习提示词或判定完成。",
+  "当体验流程控制明确标注为“直接推荐”时，用户的业务场景已足以开始体验：不要要求选择领域，也不要继续澄清；必须调用 recommend_tool，再调用 create_practice_prompt。可以在回复中简短说明你采用的合理假设。",
   "在澄清需求时，必须先调用 next-step-advisor 子 Agent，让它分析当前最关键的信息缺口。结合它的建议，每轮只推进一个问题；不要原样照搬内部分析，也不要向用户提及子 Agent。",
-  "每轮只推进一个澄清步骤，只问一个关键问题；不要一次性把场景、对象、材料和输出要求全部问完。可以为当前问题提供 2 到 4 个 questionOptions，用户可以直接点击选项继续。",
+  "每轮只推进一个澄清步骤，只问一个关键问题；不要一次性把场景、对象、材料和输出要求全部问完。选择关注领域后的第一轮必须提供 2 到 4 个具体业务环节的 questionOptions，其他澄清轮次也应尽量提供选项。question 已由界面单独展示，reply 不要重复 question 的完整内容。",
   "只有用户明确表示已完成练习（例如‘我已完成练习’）时，才允许调用 complete_scene；绝不能根据用户刚描述任务、模型生成提示词或用户点击快捷任务来推断完成。",
   "信息足够后必须调用 recommend_tool 记录唯一推荐，再调用 create_practice_prompt 生成脱敏练习。",
   "敏感信息必须提醒用户替换为虚构或脱敏内容，不要复述敏感内容。用户完成一个场景后，允许继续描述下一个场景。",
   "最终回复必须是合法 JSON，字段为 phase、reply、question、questionOptions、sceneTitle、recommendedTool、reason、practicePrompt、practiceSteps。recommendedTool 只能是 chatgpt、codex、workbuddy、jimeng 或 null。phase 只能是 clarify、recommend、teach。reply 可以使用 Markdown。"
 ].join("\n");
-
-// DeepAgents uses this schema for a second, validated final-response pass.
-// Keeping it separate from the tool schemas prevents intermediate tool calls
-// from being mistaken for the user-facing response.
-const GUIDE_RESPONSE_SCHEMA = z.object({
-  phase: z.enum(["clarify", "recommend", "teach"]),
-  reply: z.string(),
-  question: z.string(),
-  questionOptions: z.array(z.string()),
-  sceneTitle: z.string(),
-  recommendedTool: z.enum(ALLOWED_TOOL_IDS).nullable(),
-  reason: z.string(),
-  practicePrompt: z.string(),
-  practiceSteps: z.array(z.string())
-});
 
 const recommendTool = tool(async ({ toolId, reason, sceneTitle }) => ({ toolId, sceneTitle, reason }), {
   name: "recommend_tool",
@@ -90,7 +83,7 @@ async function getAgent() {
     error.code = "agent_not_configured";
     throw error;
   }
-  const model = new ChatOpenAI({ apiKey: QWEN_API_KEY, model: MODEL, temperature: 0.25, maxTokens: 1400, configuration: { baseURL: QWEN_BASE_URL } });
+  const model = new ChatOpenAI({ apiKey: QWEN_API_KEY, model: MODEL, temperature: 0.25, maxTokens: 1400, modelKwargs: MODEL_KWARGS, configuration: { baseURL: QWEN_BASE_URL } });
   agent = createDeepAgent({
     model,
     systemPrompt: GUIDE_INSTRUCTIONS,
@@ -102,7 +95,6 @@ async function getAgent() {
       model,
       tools: []
     }],
-    responseFormat: GUIDE_RESPONSE_SCHEMA,
     checkpointer: await getCheckpointer()
   });
   return agent;
@@ -124,6 +116,9 @@ function classifyUserIntent({ message, activeScene = "", interestArea = "", inte
   if (interestSelection) {
     return { type: "select_interest_area", confidence: "high" };
   }
+  if (!interestArea && !activeScene && isExplicitScenario(normalized)) {
+    return { type: "direct_scenario", confidence: "high" };
+  }
   if (!interestArea && (initialTurn || !activeScene)) {
     return { type: "choose_interest_area", confidence: "high" };
   }
@@ -140,6 +135,13 @@ function classifyUserIntent({ message, activeScene = "", interestArea = "", inte
   return { type: "continue_current_scene", confidence: "medium" };
 }
 
+function isExplicitScenario(message) {
+  if (message.length < 12) return false;
+  const taskVerb = /(分析|整理|生成|制作|撰写|写|汇总|评估|排查|定位|优化|改进|翻译|计划|报告|方案|PPT|文档|代码|海报|视频|培训|审核|复盘|预测)/;
+  const scenarioSignal = /(需要|想要|请|帮我|我们|目前|正在|负责|希望|准备|要)/;
+  return taskVerb.test(message) && scenarioSignal.test(message);
+}
+
 function nextSceneSelection() {
   return {
     phase: "clarify",
@@ -154,6 +156,7 @@ function nextSceneSelection() {
 
 function prepareMessage(message, { initialTurn = false, activeScene = "", interestArea = "", intent } = {}) {
   const intentContext = {
+    direct_scenario: "直接推荐：用户已给出明确、可体验的业务场景。不要要求选择关注领域或继续澄清；立即调用 recommend_tool 和 create_practice_prompt，并以脱敏练习方式交付。",
     start_new_scene: "开始一个新场景。当前任务名称不等于完整需求，先追问具体场景、面向对象、已有材料和输出要求，再考虑推荐工具。",
     continue_current_scene: `继续当前场景“${activeScene || "当前场景"}”。结合上下文补充需求或指导练习，不要把普通补充信息当成完成。`,
     complete_current_scene: `用户明确表示完成当前场景“${activeScene || "当前场景"}”。可以确认并调用 complete_scene，但不要凭空生成新的完成结论。`,

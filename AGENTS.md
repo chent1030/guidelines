@@ -35,9 +35,3 @@ Existing commits are short and action-oriented (for example, `优化agent`). Kee
 ## Security & Configuration
 
 Use only脱敏/虚构练习材料. Do not log secrets or sensitive business data. Treat Qwen input/output as externally processed data and keep PostgreSQL credentials in environment variables. Review audit payloads, SSE handling, and tool schemas carefully because they affect persisted sessions and model-controlled actions.
-
-## 部署服务器
-IP: 42.192.207.76
-账号：root
-密码：Ct18921080707
-目录：/data/software/guidelines

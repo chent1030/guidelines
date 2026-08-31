@@ -1,4 +1,4 @@
-# AI 体验中心 · 智能工具指引
+# AI 实验室 · 智能工具指引
 
 面向部门经理的 Qwen 对话式 AI 工具推荐、演示与实践引导页面。模型调用通过 DeepAgents JavaScript SDK 完成。
 

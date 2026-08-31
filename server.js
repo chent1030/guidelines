@@ -6,7 +6,7 @@ const express = require("express");
 const { Pool } = require("pg");
 const path = require("path");
 const fs = require("fs");
-const { MODEL, runGuide, streamGuide, classifyUserIntent } = require("./agent-runtime");
+const { MODEL, runGuide, streamGuide, classifyUserIntent, inferInterestArea } = require("./agent-runtime");
 
 const app = express();
 const PORT = Number.parseInt(process.env.PORT || "3000", 10);
@@ -45,7 +45,7 @@ const INTEREST_STARTER_OPTIONS = {
   "质量管理": ["质量问题分析与根因定位", "质量数据与报表分析", "纠正预防措施与改善闭环", "检查、审核与质量文档"],
   "人力资源": ["招聘与人才筛选", "培训与能力发展", "绩效沟通与反馈", "员工信息与制度文档"],
   "生产运营": ["排产计划与交付协调", "现场异常分析", "效率与产能改善", "标准作业与现场文档"],
-  "BP & IT": ["经营数据与分析报告", "业务流程优化", "系统需求与方案整理", "跨部门协作与知识管理"],
+  "设备领域": ["设备运行状态分析", "预防性维护与点检", "故障诊断与维修记录", "备件与设备文档管理"],
   "采购与供应链": ["供应商评估与管理", "采购成本与比价分析", "交付风险与进度跟踪", "采购文档与合同要点整理"],
   "经营管理": ["经营数据与趋势分析", "预算与计划编制", "经营会议材料整理", "管理决策信息汇总"]
 };
@@ -83,6 +83,9 @@ app.post("/api/guide/chat/stream", async (request, response, next) => {
     const userName = normaliseUserName(request.body?.userName);
     const activeScene = text(request.body?.activeScene, 300);
     const interestArea = text(request.body?.interestArea, 100);
+    const currentToolId = text(request.body?.currentToolId, 40);
+    const completedScenes = Array.isArray(request.body?.completedScenes) ? request.body.completedScenes : [];
+    const preferredToolId = text(request.body?.preferredToolId, 40);
     const interestSelection = request.body?.interestSelection === true;
     const initialTurn = request.body?.initialTurn === true;
     if (!message) {
@@ -114,11 +117,12 @@ app.post("/api/guide/chat/stream", async (request, response, next) => {
     heartbeat = setInterval(() => {
       if (!response.writableEnded && !response.destroyed) response.write(": keep-alive\n\n");
     }, 15000);
-    writeSse(response, { type: "status", message: "正在分析你的任务" });
-    for await (const event of streamGuide({ sessionId, message, initialTurn, activeScene, interestArea, intent })) {
-      if (event.type === "chunk") writeSse(response, event);
+    writeSse(response, { type: "agent_trace", step: { id: "intent", agent: "意图判断 Agent", status: "running", message: "正在分析用户意图...", detail: "" } });
+    writeSse(response, { type: "agent_trace", step: { id: "intent", agent: "意图判断 Agent", status: "completed", message: intentTraceMessage(intent), detail: `意图类型：${intent.type}` } });
+    for await (const event of streamGuide({ sessionId, message, initialTurn, activeScene, interestArea, intent, completedScenes, preferredToolId, currentToolId })) {
+      if (event.type === "chunk" || event.type === "agent_trace") writeSse(response, event);
       if (event.type === "done") {
-        const result = normaliseAgentResponse(event.raw, { intent, message, interestArea });
+        const result = normaliseAgentResponse(event.raw, { intent, message, interestArea, completedScenes, currentToolId, preferredToolId });
         await finishAudit(auditId, { status: "succeeded", response: result, latencyMs: Date.now() - startedAt });
         writeSse(response, { type: "done", result });
       }
@@ -150,6 +154,9 @@ app.post("/api/guide/chat", async (request, response, next) => {
     const userName = normaliseUserName(request.body?.userName);
     const activeScene = text(request.body?.activeScene, 300);
     const interestArea = text(request.body?.interestArea, 100);
+    const currentToolId = text(request.body?.currentToolId, 40);
+    const completedScenes = Array.isArray(request.body?.completedScenes) ? request.body.completedScenes : [];
+    const preferredToolId = text(request.body?.preferredToolId, 40);
     const interestSelection = request.body?.interestSelection === true;
     const initialTurn = request.body?.initialTurn === true;
     if (!message) {
@@ -179,8 +186,8 @@ app.post("/api/guide/chat", async (request, response, next) => {
     const intent = classifyUserIntent({ message, activeScene, interestArea, interestSelection, initialTurn });
     auditId = await startAudit({ request, message, sessionId, startedAt, activeScene, interestArea, intent });
 
-    const raw = await runGuide({ sessionId, message, initialTurn, activeScene, interestArea, intent });
-    const result = normaliseAgentResponse(typeof raw === "string" ? parseModelJson(raw) : raw, { intent, message, interestArea });
+    const raw = await runGuide({ sessionId, message, initialTurn, activeScene, interestArea, intent, completedScenes, preferredToolId, currentToolId });
+    const result = normaliseAgentResponse(typeof raw === "string" ? parseModelJson(raw) : raw, { intent, message, interestArea, completedScenes, currentToolId, preferredToolId });
     await finishAudit(auditId, { status: "succeeded", response: result, latencyMs: Date.now() - startedAt });
     response.set("Cache-Control", "no-store").json(result);
   } catch (error) {
@@ -229,6 +236,20 @@ function text(value, maxLength = 1600) {
 
 function writeSse(response, payload) {
   response.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+function intentTraceMessage(intent) {
+  const labels = {
+    choose_interest_area: "已判断：请选择关注领域",
+    select_interest_area: "已判断：进入所选领域",
+    direct_scenario: "已判断：直接处理明确场景",
+    continue_current_scene: "已判断：继续梳理当前场景",
+    start_new_scene: "已判断：开始新的场景",
+    complete_current_scene: "已判断：完成当前场景",
+    complete_without_active_scene: "已判断：当前没有进行中的场景",
+    request_next_scene: "已判断：返回场景选择"
+  };
+  return labels[intent?.type] || "用户意图分析已完成";
 }
 
 async function startAudit({ request, message, sessionId, startedAt, activeScene, interestArea, intent }) {
@@ -340,7 +361,48 @@ function removeTrailingQuestion(reply, question) {
   return value.replace(new RegExp(`(?:\\s*\\*{0,2})${escaped}(?:\\*{0,2})\\s*$`), "").trim();
 }
 
-function normaliseAgentResponse(raw, { intent, message = "", interestArea = "" } = {}) {
+const NEXT_TOOL_SCENARIOS = {
+  chatgpt: "撰写汇报材料、制度说明或管理沟通稿",
+  codex: "自动化处理台账、报表或重复性数据工作",
+  workbuddy: "整理会议纪要、办公文档或汇报材料",
+  jimeng: "制作宣传海报、培训配图或短视频素材"
+};
+
+function nextToolSuggestions(rawSuggestions, { completedScenes = [], currentToolId = "" } = {}) {
+  const completedToolIds = new Set(
+    completedScenes
+      .map(scene => scene?.toolId || Object.entries(ALLOWED_TOOLS).find(([, tool]) => tool.name === scene?.toolName)?.[0])
+      .filter(Boolean)
+  );
+  if (currentToolId) completedToolIds.add(currentToolId);
+  const seen = new Set();
+  const suggestions = Array.isArray(rawSuggestions)
+    ? rawSuggestions.map(item => {
+      const toolId = item?.toolId;
+      if (!ALLOWED_TOOLS[toolId] || completedToolIds.has(toolId) || seen.has(toolId)) return null;
+      seen.add(toolId);
+      return {
+        toolId,
+        title: text(item.title, 100) || ALLOWED_TOOLS[toolId].name,
+        reason: text(item.reason, 400) || `适合${ALLOWED_TOOLS[toolId].focus}。`,
+        suggestedScenario: text(item.suggestedScenario, 220) || NEXT_TOOL_SCENARIOS[toolId]
+      };
+    }).filter(Boolean)
+    : [];
+  if (suggestions.length) return suggestions.slice(0, 3);
+  return Object.entries(ALLOWED_TOOLS)
+    .filter(([toolId]) => !completedToolIds.has(toolId))
+    .slice(0, 3)
+    .map(([toolId, tool]) => ({
+      toolId,
+      title: tool.name,
+      reason: `适合${tool.focus}，可以作为下一个练习方向。`,
+      suggestedScenario: NEXT_TOOL_SCENARIOS[toolId]
+    }));
+}
+
+function normaliseAgentResponse(raw, { intent, message = "", interestArea = "", completedScenes = [], currentToolId = "", preferredToolId = "" } = {}) {
+  raw = raw && typeof raw === "object" ? raw : {};
   if (intent?.type === "request_next_scene" || intent?.type === "choose_interest_area") {
     return {
       phase: "clarify",
@@ -352,9 +414,11 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "" }
       interestSelection: true
     };
   }
-  const toolId = typeof raw.recommendedTool === "string" && ALLOWED_TOOLS[raw.recommendedTool]
-    ? raw.recommendedTool
-    : null;
+  const toolId = ALLOWED_TOOLS[preferredToolId]
+    ? preferredToolId
+    : (typeof raw.recommendedTool === "string" && ALLOWED_TOOLS[raw.recommendedTool]
+      ? raw.recommendedTool
+      : null);
   const steps = Array.isArray(raw.practiceSteps)
     ? raw.practiceSteps.map(step => text(step, 220)).filter(Boolean).slice(0, 4)
     : [];
@@ -362,6 +426,7 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "" }
     ? raw.questionOptions.map(option => text(option, 120)).filter(Boolean).slice(0, 4)
     : [];
   const question = text(raw.question, 400);
+  const inferredInterestArea = text(interestArea, 100) || (intent?.type === "direct_scenario" ? inferInterestArea(message) : "");
   const phase = ["clarify", "recommend", "teach"].includes(raw.phase)
     ? raw.phase
     : (toolId ? "recommend" : "clarify");
@@ -381,8 +446,20 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "" }
     questionOptions,
     sceneTitle: text(raw.sceneTitle, 100) || "当前体验场景",
     recommendation,
-    sceneSelection: Boolean(raw.sceneSelection)
+    sceneSelection: Boolean(raw.sceneSelection),
+    nextToolSuggestions: [],
+    inferredInterestArea,
+    scenarioStarted: intent?.type === "direct_scenario"
   };
+  if (intent?.type === "complete_current_scene") {
+    if (!text(raw.reply, 1800)) result.reply = "当前场景已完成。接下来可以从下面的工具中选择一个继续体验。";
+    result.nextToolSuggestions = nextToolSuggestions(raw.nextToolSuggestions, { completedScenes, currentToolId });
+    result.interestSelection = true;
+    result.question = "也可以继续选择一个关注领域，开始下一个场景。";
+    result.questionOptions = ["质量管理", "人力资源", "生产运营", "设备领域", "采购与供应链", "经营管理"];
+    result.recommendation = null;
+    result.phase = "clarify";
+  }
   if (intent?.type === "select_interest_area") {
     const area = text(interestArea || message, 100);
     const starterQuestion = result.question || "在这个领域里，你最想改善哪一类业务环节或管理问题？";
@@ -425,7 +502,7 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "" }
       phase: "clarify",
       reply: "当前还没有进行中的场景。请先选择你关心的领域。",
       question: "你想先从哪个领域开始？",
-      questionOptions: ["质量管理", "人力资源", "生产运营", "BP & IT", "采购与供应链", "经营管理"],
+      questionOptions: ["质量管理", "人力资源", "生产运营", "设备领域", "采购与供应链", "经营管理"],
       sceneTitle: "",
       recommendation: null,
       interestSelection: true
@@ -436,5 +513,5 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "" }
 
 initAuditStore().catch(error => console.error("PostgreSQL 初始化失败:", error.message));
 app.listen(PORT, () => {
-  console.log(`AI 体验中心已启动：http://localhost:${PORT}`);
+  console.log(`AI 实验室已启动：http://localhost:${PORT}`);
 });

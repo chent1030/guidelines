@@ -4,6 +4,8 @@ import {
   ArrowRight,
   ArrowUp,
   Check,
+  CheckCircle2,
+  ChevronDown,
   Copy,
   Play,
   ShieldCheck,
@@ -22,7 +24,7 @@ const INTEREST_AREAS = [
   ["质量管理", "质量体系、问题分析、改善闭环"],
   ["人力资源", "招聘培训、绩效管理、组织协作"],
   ["生产运营", "排产计划、现场管理、效率改善"],
-  ["BP & IT", "业务支持、数字化、系统与流程"],
+  ["设备领域", "设备运维、故障分析、预防性维护"],
   ["采购与供应链", "供应商管理、成本控制、交付协同"],
   ["经营管理", "经营分析、预算计划、管理决策"]
 ];
@@ -52,7 +54,7 @@ function VideoPlayer({ src, overview = false }) {
         playsInline
         preload="metadata"
         onError={() => setFailed(true)}
-        aria-label={overview ? "AI 体验中心综合介绍视频" : "工具演示视频"}
+        aria-label={overview ? "AI 实验室综合介绍视频" : "工具演示视频"}
       />
       {overview && <div className="video-overlay"><Play size={15} fill="currentColor" /> 综合介绍 · 自动播放</div>}
       {failed && <p className="video-help">视频暂不可用，请将对应文件放入 `videos/` 目录。</p>}
@@ -66,7 +68,7 @@ function Header() {
       <div className="brand">
         <div className="brand-mark" aria-hidden="true"><Sparkles size={18} /></div>
         <div>
-          <h1>AI 体验中心</h1>
+          <h1>AI 实验室</h1>
           <p>对话式工具指引 · 溧阳基地数字工具站</p>
         </div>
       </div>
@@ -77,13 +79,13 @@ function Header() {
 
 function Welcome({ onStart }) {
   return (
-    <section className="welcome-grid" aria-label="AI 体验中心介绍">
+    <section className="welcome-grid" aria-label="AI 实验室介绍">
       <div className="welcome-media">
         <VideoPlayer src="/videos/overview.mp4" overview />
       </div>
       <div className="welcome-copy">
         <div>
-          <div className="eyebrow">AI 体验中心 · 任务导览</div>
+          <div className="eyebrow">AI 实验室 · 任务导览</div>
           <h2>从一个任务开始。</h2>
           <p>AI 实验室帮助你理解工具、匹配真实工作场景，并通过安全的动手实践掌握使用方法。</p>
           <div className="welcome-actions">
@@ -140,20 +142,43 @@ function Completed({ userName, onHome }) {
 
 function MessageBubble({ message, onOption }) {
   const html = message.role === "assistant" ? renderMarkdown(message.content) : undefined;
+  const hasAgentTrace = message.role === "assistant" && message.agentSteps?.length > 0;
   return (
     <div className={`message ${message.role}`}>
       <div className="avatar">{message.role === "assistant" ? "AI" : "你"}</div>
-      <div className={`bubble ${message.streaming ? "is-streaming" : ""}`}>
-        {message.streaming && !message.content ? <span className="typing-indicator"><i /><i /><i /></span> : html ? <div className="markdown" dangerouslySetInnerHTML={html} /> : message.content}
-        {message.streaming && message.content && <span className="stream-cursor" aria-hidden="true" />}
-        {message.question && <div className="question">{message.question}</div>}
-        {message.questionOptions?.length > 0 && (
-          <div className="question-options">
-            {message.questionOptions.map(option => <button key={option} type="button" onClick={() => onOption(option)}>{option}</button>)}
-          </div>
-        )}
+      <div className={`bubble ${message.streaming ? "is-streaming" : ""} ${hasAgentTrace ? "has-agent-trace" : ""}`}>
+        {hasAgentTrace && <AgentTrace steps={message.agentSteps} running={message.streaming} />}
+        <div className={hasAgentTrace ? "bubble-content" : undefined}>
+          {message.streaming && !message.content ? <span className="typing-indicator"><i /><i /><i /></span> : html ? <div className="markdown" dangerouslySetInnerHTML={html} /> : message.content}
+          {message.streaming && message.content && <span className="stream-cursor" aria-hidden="true" />}
+          {message.question && <div className="question">{message.question}</div>}
+          {message.questionOptions?.length > 0 && (
+            <div className="question-options">
+              {message.questionOptions.map(option => <button key={option} type="button" onClick={() => onOption(option)}>{option}</button>)}
+            </div>
+          )}
+        </div>
       </div>
     </div>
+  );
+}
+
+function AgentTrace({ steps, running }) {
+  return (
+    <details className="agent-trace" open={running || undefined}>
+      <summary>
+        <span className="trace-title"><span className={`trace-dot ${running ? "running" : ""}`} />Agent 执行过程</span>
+        <span className="trace-summary">{running ? "处理中" : `${steps.length} 项已完成`}<ChevronDown size={15} /></span>
+      </summary>
+      <div className="trace-list">
+        {steps.map(step => (
+          <div className="trace-step" key={step.id}>
+            <span className={`trace-state ${step.status}`}>{step.status === "completed" ? <CheckCircle2 size={14} /> : <i />}</span>
+            <div><b>{step.agent}</b><span>{step.message}</span>{step.detail && <pre>{step.detail}</pre>}</div>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -188,6 +213,28 @@ function Recommendation({ data, active, onComplete }) {
       </div>
       {showDemo && <VideoPlayer src={TOOLS[recommendation.toolId]?.video} />}
       {showPractice && <Practice recommendation={recommendation} active={active} onComplete={onComplete} />}
+    </section>
+  );
+}
+
+function ToolSuggestions({ suggestions, onSelect }) {
+  if (!suggestions?.length) return null;
+  return (
+    <section className="tool-suggestions" aria-label="下一步工具建议">
+      <div className="tool-suggestions-heading">
+        <span className="starter-label">下一步体验建议</span>
+        <h3>还可以试试这些工具</h3>
+        <p>选择一个方向，我会继续帮你梳理适合的业务场景。</p>
+      </div>
+      <div className="tool-suggestions-grid">
+        {suggestions.map(suggestion => (
+          <article className="tool-suggestion" key={suggestion.toolId}>
+            <div className="tool-suggestion-top"><b>{suggestion.title}</b><span>{suggestion.suggestedScenario}</span></div>
+            <p>{suggestion.reason}</p>
+            <button className="small-button" type="button" onClick={() => onSelect(suggestion)}><ArrowRight size={15} /> 体验这个工具</button>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }
@@ -253,7 +300,6 @@ function Guide({ userName, onComplete }) {
   const [completedScenes, setCompletedScenes] = useState([]);
   const [messages, setMessages] = useState([]);
   const [sending, setSending] = useState(false);
-  const [statusMessage, setStatusMessage] = useState("");
   const [input, setInput] = useState("");
   const messagesRef = useRef(null);
   const inputRef = useRef(null);
@@ -266,7 +312,7 @@ function Guide({ userName, onComplete }) {
     setMessages([{ role: "assistant", content: "你好。你可以选择关注领域，我会逐步帮你梳理需求；如果已有明确任务，也可以直接输入，我会推荐合适的工具并生成练习提示词。" }]);
   }
 
-  async function submitMessage(value, { interestSelection = false, selectedArea = "" } = {}) {
+  async function submitMessage(value, { interestSelection = false, selectedArea = "", completionRequest = false, preferredToolId = "" } = {}) {
     const message = value.trim();
     if (!message || sending) return;
     const initialTurn = messages.length === 1;
@@ -274,9 +320,9 @@ function Guide({ userName, onComplete }) {
     const streamId = `stream-${Date.now()}`;
     setInput("");
     setSending(true);
-    setMessages(previous => [...previous, { role: "user", content: message }, { id: streamId, role: "assistant", content: "", streaming: true }]);
+    setMessages(previous => [...previous, { role: "user", content: message }, { id: streamId, role: "assistant", content: "", streaming: true, agentSteps: [] }]);
     try {
-      const response = await fetch("/api/guide/chat/stream", { method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" }, body: JSON.stringify({ message, sessionId, userName, activeScene, completedScenes, initialTurn, interestArea: requestArea, interestSelection }) });
+      const response = await fetch("/api/guide/chat/stream", { method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" }, body: JSON.stringify({ message, sessionId, userName, activeScene, currentToolId: activeRecommendation?.toolId || "", completedScenes, initialTurn, interestArea: requestArea, interestSelection, preferredToolId }) });
       if (!response.ok) {
         const body = await response.text();
         let data = null;
@@ -297,17 +343,33 @@ function Guide({ userName, onComplete }) {
           const line = frame.split("\n").find(item => item.startsWith("data: "));
           if (!line) continue;
           const event = JSON.parse(line.slice(6));
-          if (event.type === "status") {
-            setStatusMessage(event.message || "正在分析你的任务");
+          if (event.type === "agent_trace" && event.step) {
+            setMessages(previous => previous.map(item => {
+              if (item.id !== streamId) return item;
+              const existing = item.agentSteps || [];
+              const index = existing.findIndex(step => step.id === event.step.id);
+              const agentSteps = index >= 0
+                ? existing.map((step, stepIndex) => stepIndex === index ? { ...step, ...event.step } : step)
+                : [...existing, event.step];
+              return { ...item, agentSteps };
+            }));
           }
           if (event.type === "chunk" && event.text) {
             setMessages(previous => previous.map(item => item.id === streamId ? { ...item, content: item.content + event.text } : item));
           }
           if (event.type === "done") {
             completed = true;
-            setStatusMessage("");
             const data = event.result;
-            setMessages(previous => previous.map(item => item.id === streamId ? { ...item, streaming: false, content: data.reply, question: data.question, questionOptions: data.questionOptions, recommendation: data.recommendation } : item));
+            setMessages(previous => previous.map(item => item.id === streamId ? { ...item, streaming: false, content: data.reply, question: data.question, questionOptions: data.questionOptions, recommendation: data.recommendation, nextToolSuggestions: data.nextToolSuggestions } : item));
+            if (completionRequest && activeRecommendation && activeScene) {
+              setCompletedScenes(previous => previous.some(scene => scene.title === activeScene && scene.toolName === activeRecommendation.name)
+                ? previous
+                : [...previous, { title: activeScene, toolName: activeRecommendation.name, toolId: activeRecommendation.toolId }]);
+              setSessionId(newSessionId());
+            }
+            if (data.inferredInterestArea && !data.interestSelection) {
+              setInterestArea(data.inferredInterestArea);
+            }
             if (data.interestSelection) {
               setInterestArea("");
               setShowInterestSelector(true);
@@ -324,6 +386,10 @@ function Guide({ userName, onComplete }) {
               setActiveScene("");
               setActiveRecommendation(null);
             } else {
+              if (data.scenarioStarted && !data.recommendation) {
+                setActiveScene(data.sceneTitle || "当前体验场景");
+                setShowInterestSelector(false);
+              }
               if (data.recommendation || data.phase === "recommend" || data.phase === "teach") {
                 setActiveScene(data.sceneTitle || activeScene);
                 setShowInterestSelector(false);
@@ -332,7 +398,6 @@ function Guide({ userName, onComplete }) {
             }
           }
           if (event.type === "error") {
-            setStatusMessage("");
             throw new Error(event.message);
           }
         }
@@ -340,7 +405,6 @@ function Guide({ userName, onComplete }) {
       }
       if (!completed) throw new Error("流式响应提前结束，请重试。");
     } catch (error) {
-      setStatusMessage("");
       setMessages(previous => previous.map(item => {
         if (item.id !== streamId) return item;
         const partialContent = item.content.trim();
@@ -353,7 +417,7 @@ function Guide({ userName, onComplete }) {
         };
       }));
     }
-    finally { setStatusMessage(""); setSending(false); inputRef.current?.focus(); }
+    finally { setSending(false); inputRef.current?.focus(); }
   }
 
   function selectInterestArea(area) {
@@ -364,17 +428,19 @@ function Guide({ userName, onComplete }) {
 
   function completeScene() {
     if (!activeRecommendation || !activeScene) return;
-    setCompletedScenes(previous => previous.some(scene => scene.title === activeScene && scene.toolName === activeRecommendation.name) ? previous : [...previous, { title: activeScene, toolName: activeRecommendation.name }]);
-    setMessages(previous => [...previous, { role: "assistant", content: `已记录“${activeScene}”的体验。你可以继续选择关注领域，开始下一个场景。` }]);
-    setActiveScene(""); setActiveRecommendation(null); setSessionId(newSessionId());
+    submitMessage("我已完成本场景", { completionRequest: true });
+  }
+
+  function selectSuggestedTool(suggestion) {
+    const scenario = suggestion.suggestedScenario || `用${suggestion.title}处理一个新的工作场景`;
+    submitMessage(`我想用${suggestion.title}体验：${scenario}`, { preferredToolId: suggestion.toolId });
   }
 
   return (
     <section className="workspace" aria-label="对话式 AI 指引">
       <section className="conversation">
-        {statusMessage && <div className="status active stream-status" role="status" aria-live="polite"><i />{statusMessage}</div>}
         <div className="messages" ref={messagesRef} aria-live="polite">
-          <div className="message-stack">{messages.map((message, index) => <React.Fragment key={message.id || `${message.role}-${index}`}><MessageBubble message={message} onOption={submitMessage} />{message.recommendation && <Recommendation data={message} active={activeRecommendation === message.recommendation} onComplete={completeScene} />}</React.Fragment>)}
+          <div className="message-stack">{messages.map((message, index) => <React.Fragment key={message.id || `${message.role}-${index}`}><MessageBubble message={message} onOption={submitMessage} />{message.recommendation && <Recommendation data={message} active={activeRecommendation === message.recommendation} onComplete={completeScene} />}{message.nextToolSuggestions?.length > 0 && <ToolSuggestions suggestions={message.nextToolSuggestions} onSelect={selectSuggestedTool} />}</React.Fragment>)}
             {showInterestSelector && <InterestSelector onSelect={selectInterestArea} />}
           </div>
         </div>

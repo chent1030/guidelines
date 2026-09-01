@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 实验室 - 指引卡片方案</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #141819;
+      --surface: #1d2324;
+      --surface-2: #252d2e;
+      --line: #3a4545;
+      --text: #f1f4f2;
+      --muted: #aab5b2;
+      --accent: #e75b43;
+      --accent-dark: #be402d;
+      --focus: #d5efe5;
+      --radius: 8px;
+      font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { background: var(--page); }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100dvh;
+      color: var(--text);
+      background:
+        linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px) 0 0 / 48px 48px,
+        linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px) 0 0 / 48px 48px,
+        var(--page);
+    }
+
+    button { font: inherit; }
+
+    button:focus-visible,
+    [tabindex]:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 3px;
+    }
+
+    .page-shell {
+      width: min(1420px, 100%);
+      margin: 0 auto;
+      padding: 28px clamp(20px, 4vw, 64px) 58px;
+    }
+
+    .masthead {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: end;
+      padding: 0 0 30px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand { color: var(--accent); font-size: 14px; font-weight: 700; letter-spacing: .08em; }
+    h1 { max-width: 760px; margin: 10px 0 10px; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.08; letter-spacing: 0; }
+    .lead { max-width: 640px; margin: 0; color: var(--muted); font-size: 16px; line-height: 1.7; }
+
+    .selection {
+      min-width: 244px;
+      padding: 15px 17px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(29, 35, 36, .9);
+    }
+
+    .selection-label { display: block; margin-bottom: 5px; color: var(--muted); font-size: 12px; }
+    .selection-value { display: block; min-height: 24px; color: var(--text); font-size: 15px; font-weight: 700; }
+
+    .switcher {
+      display: flex;
+      gap: 8px;
+      margin: 28px 0 20px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .switcher::-webkit-scrollbar { display: none; }
+
+    .switcher button {
+      flex: 0 0 auto;
+      min-height: 42px;
+      padding: 0 16px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      color: var(--muted);
+      background: transparent;
+      cursor: pointer;
+      transition: background .22s ease, color .22s ease, border-color .22s ease, transform .22s ease;
+    }
+
+    .switcher button:hover { color: var(--text); border-color: #687574; }
+    .switcher button:active { transform: scale(.98); }
+    .switcher button[aria-selected="true"] { color: #171b1b; border-color: var(--accent); background: var(--accent); font-weight: 700; }
+
+    .concept { display: none; padding-top: 18px; }
+    .concept.is-active { display: block; animation: rise .38s ease both; }
+
+    .concept-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+    .concept-heading h2 { margin: 0; font-size: clamp(22px, 2.5vw, 30px); letter-spacing: 0; }
+    .concept-heading p { max-width: 540px; margin: 0; color: var(--muted); line-height: 1.6; text-align: right; }
+
+    .stage-wrap { position: relative; overflow: hidden; padding: 12px 0 24px; }
+    .stage-track { display: flex; align-items: center; gap: clamp(12px, 2vw, 30px); transition: transform .48s cubic-bezier(.2,.8,.2,1); will-change: transform; }
+    .stage-card { flex: 0 0 min(78vw, 920px); min-height: 420px; opacity: .42; transform: scale(.91); transition: opacity .48s ease, transform .48s ease; }
+    .stage-card.is-current { opacity: 1; transform: scale(1); }
+
+    .guide-card {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 100%;
+      padding: clamp(26px, 4vw, 54px);
+      border: 1px solid #4b5857;
+      border-radius: var(--radius);
+      background: #222a2a;
+      box-shadow: 0 24px 58px rgba(0,0,0,.24);
+    }
+
+    .guide-card.coral { background: #d7503b; border-color: #f07d68; color: #171b1b; }
+    .guide-card.pale { background: #d5efe5; border-color: #f2fffa; color: #17201e; }
+    .guide-card.ink { background: #1b2324; }
+    .card-kicker { margin: 0 0 20px; color: inherit; opacity: .68; font-size: 13px; font-weight: 700; }
+    .guide-card h3 { max-width: 620px; margin: 0; font-size: clamp(28px, 4vw, 51px); line-height: 1.13; letter-spacing: 0; }
+    .guide-card .detail { max-width: 590px; margin: 18px 0 0; font-size: clamp(15px, 1.45vw, 18px); line-height: 1.7; opacity: .8; }
+    .card-bottom { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-top: 42px; }
+    .card-tag { display: inline-block; padding: 8px 10px; border: 1px solid currentColor; border-radius: 4px; font-size: 13px; font-weight: 700; }
+    .card-hint { max-width: 255px; font-size: 14px; line-height: 1.5; text-align: right; opacity: .7; }
+
+    .carousel-controls { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .arrow-group { display: flex; gap: 8px; }
+    .icon-button {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      color: var(--text);
+      background: var(--surface);
+      cursor: pointer;
+      transition: transform .18s ease, background .18s ease, border-color .18s ease;
+    }
+    .icon-button:hover { border-color: #798482; background: var(--surface-2); }
+    .icon-button:active { transform: scale(.96); }
+    .icon-button svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: square; stroke-linejoin: miter; }
+    .dots { display: flex; align-items: center; gap: 7px; }
+    .dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%; background: #566260; cursor: pointer; transition: width .25s ease, background .25s ease; }
+    .dot.is-current { width: 28px; border-radius: 4px; background: var(--accent); }
+
+    .select-button {
+      min-height: 42px;
+      padding: 0 16px;
+      border: 1px solid var(--accent);
+      border-radius: 5px;
+      color: #171b1b;
+      background: var(--accent);
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform .18s ease, background .18s ease;
+    }
+    .select-button:hover { background: #f07159; }
+    .select-button:active { transform: scale(.98); }
+
+    .rail-window { overflow: hidden; padding: 8px 0 20px; }
+    .rail { display: flex; gap: 16px; overflow-x: auto; padding: 0 8px 12px; scroll-snap-type: x mandatory; scrollbar-width: thin; scrollbar-color: var(--accent) #293131; }
+    .rail::-webkit-scrollbar { height: 8px; }
+    .rail::-webkit-scrollbar-track { background: #293131; }
+    .rail::-webkit-scrollbar-thumb { background: var(--accent); }
+    .rail-card { flex: 0 0 min(74vw, 680px); min-height: 410px; scroll-snap-align: center; }
+    .rail-card .guide-card { min-height: 410px; }
+    .rail-meta { display: flex; justify-content: space-between; align-items: center; gap: 16px; color: var(--muted); font-size: 14px; }
+    .rail-meta strong { color: var(--text); }
+
+    .deck-shell { position: relative; min-height: 510px; padding: 12px 0 24px; }
+    .deck { position: relative; width: min(80vw, 940px); height: 460px; margin: 0 auto; }
+    .deck-card { position: absolute; inset: 0; transform-origin: 50% 100%; transition: transform .5s cubic-bezier(.2,.8,.2,1), opacity .42s ease; }
+    .deck-card[data-depth="0"] { z-index: 3; transform: translateX(0) rotate(0); opacity: 1; }
+    .deck-card[data-depth="1"] { z-index: 2; transform: translateX(36px) translateY(16px) rotate(2deg); opacity: .76; }
+    .deck-card[data-depth="2"] { z-index: 1; transform: translateX(68px) translateY(31px) rotate(4deg); opacity: .43; }
+    .deck-card[data-depth="3"] { z-index: 0; transform: translateX(92px) translateY(43px) rotate(6deg); opacity: 0; }
+    .deck-card .guide-card { min-height: 100%; }
+    .deck-note { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+
+    .choice-toast {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 10;
+      max-width: min(360px, calc(100vw - 40px));
+      padding: 15px 18px;
+      border: 1px solid #f07d68;
+      border-radius: var(--radius);
+      color: #171b1b;
+      background: var(--accent);
+      box-shadow: 0 18px 50px rgba(0,0,0,.3);
+      font-weight: 700;
+      transform: translateY(130%);
+      transition: transform .35s cubic-bezier(.2,.8,.2,1);
+    }
+    .choice-toast.is-visible { transform: translateY(0); }
+
+    @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+    @media (max-width: 720px) {
+      .page-shell { padding: 20px 16px 42px; }
+      .masthead { grid-template-columns: 1fr; gap: 20px; padding-bottom: 22px; }
+      .selection { min-width: 0; }
+      .concept-heading { display: block; }
+      .concept-heading p { margin-top: 8px; text-align: left; }
+      .stage-wrap { margin-left: -16px; margin-right: -16px; }
+      .stage-track { gap: 12px; }
+      .stage-card { flex-basis: 86vw; min-height: 455px; }
+      .guide-card { padding: 27px 24px; }
+      .guide-card h3 { font-size: 31px; }
+      .card-bottom { align-items: flex-start; flex-direction: column; margin-top: 30px; }
+      .card-hint { text-align: left; }
+      .carousel-controls { flex-wrap: wrap; }
+      .select-button { margin-left: auto; }
+      .rail-window { margin-left: -16px; margin-right: -16px; }
+      .rail { padding-left: 16px; }
+      .rail-card { flex-basis: 84vw; min-height: 445px; }
+      .rail-card .guide-card { min-height: 445px; }
+      .deck-shell { min-height: 540px; margin-right: -10px; }
+      .deck { width: 88vw; height: 468px; margin-left: 0; }
+      .deck-card[data-depth="1"] { transform: translateX(22px) translateY(14px) rotate(2deg); }
+      .deck-card[data-depth="2"] { transform: translateX(42px) translateY(28px) rotate(4deg); }
+      .deck-card[data-depth="3"] { transform: translateX(58px) translateY(42px) rotate(6deg); }
+      .deck-note { margin-top: 8px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page-shell">
+    <header class="masthead">
+      <div>
+        <div class="brand">AI 实验室</div>
+        <h1>选择你更接近的指引方式</h1>
+        <p class="lead">三个方案都使用横向浏览，区别在于信息密度和操作节奏。请直接拖动、点击或滑动卡片，选择最符合你想象的方式。</p>
+      </div>
+      <aside class="selection" aria-live="polite">
+        <span class="selection-label">当前选择</span>
+        <strong class="selection-value" id="selectionValue">尚未选择</strong>
+      </aside>
+    </header>
+
+    <nav class="switcher" aria-label="切换指引卡片方案" role="tablist">
+      <button type="button" role="tab" aria-selected="true" aria-controls="stage" id="tab-stage" data-concept="stage">聚焦舞台</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="rail" id="tab-rail" data-concept="rail">卡片轨道</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="deck" id="tab-deck" data-concept="deck">层叠卡组</button>
+    </nav>
+
+    <section class="concept is-active" id="stage" role="tabpanel" aria-labelledby="tab-stage">
+      <div class="concept-heading">
+        <h2>聚焦舞台</h2>
+        <p>每次只强调一个建议。前后卡片微微露出，适合让 AI 像主持人一样带着用户一步一步往下走。</p>
+      </div>
+      <div class="stage-wrap" id="stageWrap">
+        <div class="stage-track" id="stageTrack">
+          <article class="stage-card" data-stage-card>
+            <div class="guide-card coral">
+              <div>
+                <p class="card-kicker">AI 已识别你的任务</p>
+                <h3>识别到企业文化传播场景</h3>
+                <p class="detail">你希望把团队文化和阶段成果更直观地呈现给员工。我们先聚焦最后要交付的内容。</p>
+              </div>
+              <div class="card-bottom"><span class="card-tag">任务理解</span><span class="card-hint">向左或向右切换下一张指引</span></div>
+            </div>
+          </article>
+          <article class="stage-card" data-stage-card>
+            <div class="guide-card pale">
+              <div>
+                <p class="card-kicker">建议确认成果</p>
+                <h3>最终成果：线下文化工作墙</h3>
+                <p class="detail">先确定主题、展示区域和主要受众。AI 会根据这三个信息把任务转成可执行的内容与视觉方案。</p>
+              </div>
+              <div class="card-bottom"><span class="card-tag">下一步确认</span><span class="card-hint">用最少的问题帮助你往前推进</span></div>
+            </div>
+          </article>
+          <article class="stage-card" data-stage-card>
+            <div class="guide-card ink">
+              <div>
+                <p class="card-kicker">根据成果匹配工具</p>
+                <h3>推荐使用：即梦AI</h3>
+                <p class="detail">先生成主视觉和版式方向，再把确认过的文案组合进工作墙。需要协作整理时，可以继续体验 WorkBuddy。</p>
+              </div>
+              <div class="card-bottom"><span class="card-tag">工具推荐</span><span class="card-hint">推荐围绕交付物，不是所有需求都指向同一个工具</span></div>
+            </div>
+          </article>
+          <article class="stage-card" data-stage-card>
+            <div class="guide-card coral">
+              <div>
+                <p class="card-kicker">继续探索</p>
+                <h3>下一步可体验：WorkBuddy 或 Codex</h3>
+                <p class="detail">完成文化工作墙后，你可以继续进入办公协同或脚本自动化场景，体验其他工具能解决什么问题。</p>
+              </div>
+              <div class="card-bottom"><span class="card-tag">延伸指引</span><span class="card-hint">帮助用户从一个成果走向更多可用工具</span></div>
+            </div>
+          </article>
+        </div>
+      </div>
+      <div class="carousel-controls">
+        <div class="arrow-group" aria-label="切换聚焦舞台卡片">
+          <button class="icon-button" type="button" id="stagePrevious" aria-label="上一张"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4 7 12l8 8" /></svg></button>
+          <button class="icon-button" type="button" id="stageNext" aria-label="下一张"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 4 8 8-8 8" /></svg></button>
+        </div>
+        <div class="dots" id="stageDots" aria-label="聚焦舞台进度"></div>
+        <button class="select-button" type="button" data-select="聚焦舞台">选择这个方案</button>
+      </div>
+    </section>
+
+    <section class="concept" id="rail" role="tabpanel" aria-labelledby="tab-rail" hidden>
+      <div class="concept-heading">
+        <h2>卡片轨道</h2>
+        <p>用户可以像翻看一组推荐一样自由浏览。卡片并排存在，适合一次给出多个方向，但仍保持清晰的优先级。</p>
+      </div>
+      <div class="rail-window">
+        <div class="rail" id="railTrack" tabindex="0" aria-label="横向浏览 AI 指引卡片">
+          <article class="rail-card"><div class="guide-card coral"><div><p class="card-kicker">AI 已识别你的任务</p><h3>识别到企业文化传播场景</h3><p class="detail">从具体任务直接起步，领域判断由 AI 在后台完成。</p></div><div class="card-bottom"><span class="card-tag">任务理解</span><span class="card-hint">先让用户确认 AI 是否理解正确</span></div></div></article>
+          <article class="rail-card"><div class="guide-card pale"><div><p class="card-kicker">你可以继续补充</p><h3>确认墙面位置和主要受众</h3><p class="detail">这两个条件会影响视觉表现、内容密度和最终的工具组合。</p></div><div class="card-bottom"><span class="card-tag">补充条件</span><span class="card-hint">只问会改变推荐的关键问题</span></div></div></article>
+          <article class="rail-card"><div class="guide-card ink"><div><p class="card-kicker">推荐工具</p><h3>即梦AI负责视觉方案</h3><p class="detail">生成工作墙主视觉、版式和插画方向。文字内容可同步在 WorkBuddy 中协作整理。</p></div><div class="card-bottom"><span class="card-tag">工具推荐</span><span class="card-hint">每张卡片只说清一件事</span></div></div></article>
+          <article class="rail-card"><div class="guide-card pale"><div><p class="card-kicker">继续体验</p><h3>下一站：协同整理或自动化发布</h3><p class="detail">完成当前任务后，选择下一个与你的工作有关的 AI 工具体验。</p></div><div class="card-bottom"><span class="card-tag">更多可能</span><span class="card-hint">用户可随时浏览，不必按固定步骤</span></div></div></article>
+        </div>
+      </div>
+      <div class="carousel-controls">
+        <p class="rail-meta"><strong>自由滑动浏览</strong><span>拖动卡片或使用触控板横向移动</span></p>
+        <button class="select-button" type="button" data-select="卡片轨道">选择这个方案</button>
+      </div>
+    </section>
+
+    <section class="concept" id="deck" role="tabpanel" aria-labelledby="tab-deck" hidden>
+      <div class="concept-heading">
+        <h2>层叠卡组</h2>
+        <p>把每个建议做成一张等待翻开的卡。操作更有仪式感，适合把 AI 导引做成一次连续的探索体验。</p>
+      </div>
+      <div class="deck-shell">
+        <div class="deck" id="deckCards">
+          <article class="deck-card"><div class="guide-card coral"><div><p class="card-kicker">当前指引</p><h3>识别到企业文化传播场景</h3><p class="detail">AI 已从你的描述中理解任务，并在需要时自动归入相应领域。</p></div><div class="card-bottom"><span class="card-tag">任务理解</span><span class="card-hint">翻开下一张查看建议</span></div></div></article>
+          <article class="deck-card"><div class="guide-card pale"><div><p class="card-kicker">关键确认</p><h3>先锁定工作墙的受众和使用位置</h3><p class="detail">这两项信息足以决定接下来的内容组织和视觉风格，不把指引变成业务访谈。</p></div><div class="card-bottom"><span class="card-tag">确认方向</span><span class="card-hint">问题只服务于最终推荐</span></div></div></article>
+          <article class="deck-card"><div class="guide-card ink"><div><p class="card-kicker">工具选择</p><h3>即梦AI生成视觉，WorkBuddy协作定稿</h3><p class="detail">AI 实验室把一个需求拆成工具各自擅长的环节，避免只推荐 ChatGPT。</p></div><div class="card-bottom"><span class="card-tag">推荐组合</span><span class="card-hint">以最终交付物决定工具</span></div></div></article>
+          <article class="deck-card"><div class="guide-card coral"><div><p class="card-kicker">下一个场景</p><h3>继续选择一个你关心的领域</h3><p class="detail">完成一次体验后，回到场景选择，继续发现更多能在日常工作中用起来的 AI 工具。</p></div><div class="card-bottom"><span class="card-tag">继续体验</span><span class="card-hint">循环回到新的场景选择</span></div></div></article>
+        </div>
+      </div>
+      <div class="carousel-controls">
+        <p class="deck-note">点击箭头翻开下一张。最上方的卡片是当前 AI 最希望你关注的内容。</p>
+        <div class="arrow-group" aria-label="切换层叠卡组">
+          <button class="icon-button" type="button" id="deckPrevious" aria-label="上一张"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4 7 12l8 8" /></svg></button>
+          <button class="icon-button" type="button" id="deckNext" aria-label="下一张"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 4 8 8-8 8" /></svg></button>
+          <button class="select-button" type="button" data-select="层叠卡组">选择这个方案</button>
+        </div>
+      </div>
+    </section>
+  </main>
+  <div class="choice-toast" id="choiceToast" role="status"></div>
+
+  <script>
+    const concepts = [...document.querySelectorAll(".concept")];
+    const tabs = [...document.querySelectorAll("[data-concept]")];
+    const selectionValue = document.getElementById("selectionValue");
+    const toast = document.getElementById("choiceToast");
+    let toastTimer;
+
+    function showConcept(id) {
+      concepts.forEach((concept) => {
+        const active = concept.id === id;
+        concept.classList.toggle("is-active", active);
+        concept.hidden = !active;
+      });
+      tabs.forEach((tab) => tab.setAttribute("aria-selected", String(tab.dataset.concept === id)));
+    }
+
+    tabs.forEach((tab) => tab.addEventListener("click", () => showConcept(tab.dataset.concept)));
+
+    document.querySelectorAll("[data-select]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const name = button.dataset.select;
+        selectionValue.textContent = name;
+        toast.textContent = "已选择「" + name + "」，后续正式页面将以此方向继续设计。";
+        toast.classList.add("is-visible");
+        window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => toast.classList.remove("is-visible"), 4200);
+      });
+    });
+
+    const stageTrack = document.getElementById("stageTrack");
+    const stageCards = [...document.querySelectorAll("[data-stage-card]")];
+    const dots = document.getElementById("stageDots");
+    let stageIndex = 1;
+    let dragStartX = null;
+
+    stageCards.forEach((_, index) => {
+      const dot = document.createElement("button");
+      dot.type = "button";
+      dot.className = "dot";
+      dot.setAttribute("aria-label", "查看第 " + (index + 1) + " 张卡片");
+      dot.addEventListener("click", () => updateStage(index));
+      dots.appendChild(dot);
+    });
+
+    function updateStage(index) {
+      stageIndex = (index + stageCards.length) % stageCards.length;
+      const active = stageCards[stageIndex];
+      const wrap = document.getElementById("stageWrap");
+      const wrapCenter = wrap.getBoundingClientRect().left + wrap.clientWidth / 2;
+      const cardCenter = active.getBoundingClientRect().left + active.clientWidth / 2;
+      const currentTranslate = Number(stageTrack.dataset.offset || 0);
+      const nextTranslate = currentTranslate + (wrapCenter - cardCenter);
+      stageTrack.style.transform = "translateX(" + nextTranslate + "px)";
+      stageTrack.dataset.offset = nextTranslate;
+      stageCards.forEach((card, cardIndex) => card.classList.toggle("is-current", cardIndex === stageIndex));
+      [...dots.children].forEach((dot, dotIndex) => dot.classList.toggle("is-current", dotIndex === stageIndex));
+    }
+
+    document.getElementById("stagePrevious").addEventListener("click", () => updateStage(stageIndex - 1));
+    document.getElementById("stageNext").addEventListener("click", () => updateStage(stageIndex + 1));
+    stageTrack.addEventListener("pointerdown", (event) => { dragStartX = event.clientX; stageTrack.setPointerCapture(event.pointerId); });
+    stageTrack.addEventListener("pointerup", (event) => {
+      if (dragStartX === null) return;
+      const delta = event.clientX - dragStartX;
+      if (Math.abs(delta) > 48) updateStage(stageIndex + (delta < 0 ? 1 : -1));
+      dragStartX = null;
+    });
+    stageTrack.addEventListener("pointercancel", () => { dragStartX = null; });
+    window.addEventListener("resize", () => { stageTrack.style.transform = "translateX(0)"; stageTrack.dataset.offset = "0"; updateStage(stageIndex); });
+    updateStage(stageIndex);
+
+    const deckCards = [...document.querySelectorAll(".deck-card")];
+    let deckIndex = 0;
+    function updateDeck(index) {
+      deckIndex = (index + deckCards.length) % deckCards.length;
+      deckCards.forEach((card, cardIndex) => card.dataset.depth = String((cardIndex - deckIndex + deckCards.length) % deckCards.length));
+    }
+    document.getElementById("deckPrevious").addEventListener("click", () => updateDeck(deckIndex - 1));
+    document.getElementById("deckNext").addEventListener("click", () => updateDeck(deckIndex + 1));
+    updateDeck(0);
+
+    document.addEventListener("keydown", (event) => {
+      const active = document.querySelector(".concept.is-active");
+      if (!active || !["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+      if (active.id === "stage") updateStage(stageIndex + (event.key === "ArrowRight" ? 1 : -1));
+      if (active.id === "deck") updateDeck(deckIndex + (event.key === "ArrowRight" ? 1 : -1));
+    });
+  </script>
+</body>
+</html>

@@ -56,7 +56,6 @@ function VideoPlayer({ src, overview = false }) {
         onError={() => setFailed(true)}
         aria-label={overview ? "AI 实验室综合介绍视频" : "工具演示视频"}
       />
-      {overview && <div className="video-overlay"><Play size={15} fill="currentColor" /> 综合介绍 · 自动播放</div>}
       {failed && <p className="video-help">视频暂不可用，请将对应文件放入 `videos/` 目录。</p>}
     </div>
   );
@@ -140,26 +139,54 @@ function Completed({ userName, onHome }) {
   );
 }
 
-function MessageBubble({ message, onOption }) {
-  const html = message.role === "assistant" ? renderMarkdown(message.content) : undefined;
-  const hasAgentTrace = message.role === "assistant" && message.agentSteps?.length > 0;
+function TaskReceipt({ message }) {
   return (
-    <div className={`message ${message.role}`}>
-      <div className="avatar">{message.role === "assistant" ? "AI" : "你"}</div>
-      <div className={`bubble ${message.streaming ? "is-streaming" : ""} ${hasAgentTrace ? "has-agent-trace" : ""}`}>
-        {hasAgentTrace && <AgentTrace steps={message.agentSteps} running={message.streaming} />}
-        <div className={hasAgentTrace ? "bubble-content" : undefined}>
+    <div className="task-receipt">
+      <span><Check size={13} /></span>
+      <b>已提交</b>
+      <p>{message.content}</p>
+    </div>
+  );
+}
+
+function guideStage(message) {
+  if (message.streaming) return "正在生成指引";
+  if (message.nextToolSuggestions?.length) return "下一步体验";
+  if (message.recommendation) return "工具推荐";
+  if (message.question) return "快速确认";
+  return "任务指引";
+}
+
+function GuideCard({ message, active, showInterestSelector, onOption, onInterestSelect, onComplete, onToolSelect }) {
+  const html = renderMarkdown(message.content);
+  const hasAgentTrace = message.agentSteps?.length > 0;
+  const resolved = Boolean(message.selectedOption);
+  return (
+    <article className={`guide-card deck-card ${message.streaming ? "is-streaming" : ""} ${resolved ? "is-resolved" : ""}`}>
+      <header className="guide-card-head">
+        <div className="guide-step">
+          <span className="guide-stage-icon"><Sparkles size={18} /></span>
+          <div><span>AI 实验室</span><b>{guideStage(message)}</b></div>
+        </div>
+        <div className={`guide-state ${message.streaming ? "running" : "ready"}`}><i />{message.streaming ? "Agent 运行中" : "指引已就绪"}</div>
+      </header>
+      {hasAgentTrace && <AgentTrace steps={message.agentSteps} running={message.streaming} />}
+      <div className="guide-card-body">
+        <div className="guide-copy">
           {message.streaming && !message.content ? <span className="typing-indicator"><i /><i /><i /></span> : html ? <div className="markdown" dangerouslySetInnerHTML={html} /> : message.content}
           {message.streaming && message.content && <span className="stream-cursor" aria-hidden="true" />}
-          {message.question && <div className="question">{message.question}</div>}
-          {message.questionOptions?.length > 0 && (
-            <div className="question-options">
-              {message.questionOptions.map(option => <button key={option} type="button" onClick={() => onOption(option)}>{option}</button>)}
-            </div>
-          )}
         </div>
+        {message.question && <div className="guide-question"><span>需要你的选择</span><strong>{message.question}</strong></div>}
+        {resolved ? <div className="selection-result"><CheckCircle2 size={16} /><span>已选择</span><b>{message.selectedOption}</b></div> : message.questionOptions?.length > 0 && (
+          <div className="guide-actions">
+            {message.questionOptions.map((option, index) => <button style={{ "--delay": `${index * 45}ms` }} key={option} type="button" onClick={() => onOption(option, message.id)}><span>{String(index + 1).padStart(2, "0")}</span><b>{option}</b><ArrowRight size={15} /></button>)}
+          </div>
+        )}
+        {showInterestSelector && <InterestSelector onSelect={onInterestSelect} />}
+        {message.recommendation && <Recommendation data={message} active={active} onComplete={onComplete} />}
+        {message.nextToolSuggestions?.length > 0 && <ToolSuggestions suggestions={message.nextToolSuggestions} onSelect={onToolSelect} />}
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -188,7 +215,6 @@ function InterestSelector({ onSelect }) {
       <div className="interest-heading">
         <div className="starter-label">还不确定从哪里开始？</div>
         <h3 id="interest-title">选择一个关注领域</h3>
-        <p>也可以直接在下方描述明确任务，我会为你推荐合适的工具。</p>
       </div>
       <div className="interest-grid">
         {INTEREST_AREAS.map(([title, detail], index) => <button key={title} type="button" onClick={() => onSelect(title)}><span className="interest-index">0{index + 1}</span><span className="interest-copy"><b>{title}</b><small>{detail}</small></span><ArrowRight size={16} /></button>)}
@@ -203,7 +229,8 @@ function Recommendation({ data, active, onComplete }) {
   const recommendation = data.recommendation;
   if (!recommendation) return null;
   return (
-    <section className="recommendation">
+    <section className={`recommendation tool-${recommendation.toolId}`}>
+      <div className="section-code">PRIMARY TOOL</div>
       <div className="recommendation-top"><div className="recommendation-title">推荐使用：{recommendation.name}</div><span className="tool-tag">{recommendation.tag}</span></div>
       <p>{recommendation.reason}</p>
       <div className="benchmarks"><b>对标参考（不可体验）：</b>{recommendation.benchmarks.length ? recommendation.benchmarks.map(name => <span key={name}>{name}</span>) : <em>暂无对标产品</em>}</div>
@@ -228,11 +255,11 @@ function ToolSuggestions({ suggestions, onSelect }) {
       </div>
       <div className="tool-suggestions-grid">
         {suggestions.map(suggestion => (
-          <article className="tool-suggestion" key={suggestion.toolId}>
+          <div className={`tool-suggestion tool-${suggestion.toolId}`} key={suggestion.toolId}>
             <div className="tool-suggestion-top"><b>{suggestion.title}</b><span>{suggestion.suggestedScenario}</span></div>
             <p>{suggestion.reason}</p>
             <button className="small-button" type="button" onClick={() => onSelect(suggestion)}><ArrowRight size={15} /> 体验这个工具</button>
-          </article>
+          </div>
         ))}
       </div>
     </section>
@@ -304,12 +331,17 @@ function Guide({ userName, onComplete }) {
   const messagesRef = useRef(null);
   const inputRef = useRef(null);
 
-  useEffect(() => { messagesRef.current?.scrollTo({ top: messagesRef.current.scrollHeight, behavior: "smooth" }); }, [messages]);
+  useEffect(() => {
+    const container = messagesRef.current;
+    const card = container?.querySelector(".guide-card:last-of-type");
+    if (!container || !card) return;
+    container.scrollTo({ top: Math.max(0, card.offsetTop - 24), behavior: messages.length > 1 ? "smooth" : "auto" });
+  }, [messages.length]);
   useEffect(() => { inputRef.current?.focus(); }, []);
   useEffect(() => { addWelcomeMessage(); }, []);
 
   function addWelcomeMessage() {
-    setMessages([{ role: "assistant", content: "你好。你可以选择关注领域，我会逐步帮你梳理需求；如果已有明确任务，也可以直接输入，我会推荐合适的工具并生成练习提示词。" }]);
+    setMessages([{ id: "guide-welcome", role: "assistant", content: "选择一个关注领域开始指引。已有明确任务时，也可以通过下方输入框直接提交。" }]);
   }
 
   async function submitMessage(value, { interestSelection = false, selectedArea = "", completionRequest = false, preferredToolId = "" } = {}) {
@@ -319,8 +351,9 @@ function Guide({ userName, onComplete }) {
     const requestArea = selectedArea || interestArea;
     const streamId = `stream-${Date.now()}`;
     setInput("");
+    if (inputRef.current) inputRef.current.style.height = "44px";
     setSending(true);
-    setMessages(previous => [...previous, { role: "user", content: message }, { id: streamId, role: "assistant", content: "", streaming: true, agentSteps: [] }]);
+    setMessages(previous => [...previous, { id: `task-${Date.now()}`, role: "user", content: message }, { id: streamId, role: "assistant", content: "", streaming: true, agentSteps: [] }]);
     try {
       const response = await fetch("/api/guide/chat/stream", { method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" }, body: JSON.stringify({ message, sessionId, userName, activeScene, currentToolId: activeRecommendation?.toolId || "", completedScenes, initialTurn, interestArea: requestArea, interestSelection, preferredToolId }) });
       if (!response.ok) {
@@ -360,7 +393,7 @@ function Guide({ userName, onComplete }) {
           if (event.type === "done") {
             completed = true;
             const data = event.result;
-            setMessages(previous => previous.map(item => item.id === streamId ? { ...item, streaming: false, content: data.reply, question: data.question, questionOptions: data.questionOptions, recommendation: data.recommendation, nextToolSuggestions: data.nextToolSuggestions } : item));
+            setMessages(previous => previous.map(item => item.id === streamId ? { ...item, streaming: false, content: data.reply, question: data.question, questionOptions: data.questionOptions, recommendation: data.recommendation, nextToolSuggestions: data.nextToolSuggestions, phase: data.phase } : item));
             if (completionRequest && activeRecommendation && activeScene) {
               setCompletedScenes(previous => previous.some(scene => scene.title === activeScene && scene.toolName === activeRecommendation.name)
                 ? previous
@@ -426,6 +459,11 @@ function Guide({ userName, onComplete }) {
     submitMessage(area, { interestSelection: true, selectedArea: area });
   }
 
+  function selectOption(option, cardId) {
+    setMessages(previous => previous.map(item => item.id === cardId ? { ...item, selectedOption: option } : item));
+    submitMessage(option);
+  }
+
   function completeScene() {
     if (!activeRecommendation || !activeScene) return;
     submitMessage("我已完成本场景", { completionRequest: true });
@@ -436,15 +474,54 @@ function Guide({ userName, onComplete }) {
     submitMessage(`我想用${suggestion.title}体验：${scenario}`, { preferredToolId: suggestion.toolId });
   }
 
+  const assistantMessages = messages.filter(message => message.role === "assistant");
+  const activeMessage = assistantMessages.at(-1);
+  const deckDepth = Math.min(Math.max(assistantMessages.length - 1, 0), 3);
+
   return (
-    <section className="workspace" aria-label="对话式 AI 指引">
+    <section className="workspace" aria-label="AI 实验室指引">
       <section className="conversation">
         <div className="messages" ref={messagesRef} aria-live="polite">
-          <div className="message-stack">{messages.map((message, index) => <React.Fragment key={message.id || `${message.role}-${index}`}><MessageBubble message={message} onOption={submitMessage} />{message.recommendation && <Recommendation data={message} active={activeRecommendation === message.recommendation} onComplete={completeScene} />}{message.nextToolSuggestions?.length > 0 && <ToolSuggestions suggestions={message.nextToolSuggestions} onSelect={selectSuggestedTool} />}</React.Fragment>)}
-            {showInterestSelector && <InterestSelector onSelect={selectInterestArea} />}
+          <div className={`message-stack deck-stage deck-depth-${deckDepth}`}>
+            <div className="deck-underlay deck-underlay-far" aria-hidden="true"><span>AI 实验室</span></div>
+            <div className="deck-underlay deck-underlay-near" aria-hidden="true"><span>下一张指引</span></div>
+            {activeMessage && <GuideCard
+              key={activeMessage.id}
+              message={activeMessage}
+              active={activeRecommendation === activeMessage.recommendation}
+              showInterestSelector={showInterestSelector}
+              onOption={selectOption}
+              onInterestSelect={selectInterestArea}
+              onComplete={completeScene}
+              onToolSelect={selectSuggestedTool}
+            />}
           </div>
         </div>
-        <form className="composer" onSubmit={event => { event.preventDefault(); submitMessage(input); }}><div className="composer-shell"><textarea ref={inputRef} value={input} maxLength={2000} disabled={sending} onChange={event => setInput(event.target.value)} onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); submitMessage(input); } }} placeholder="补充你想解决的业务问题……" aria-label="补充你想解决的业务问题" /><div className="composer-foot"><span>仅使用虚构或脱敏材料</span><button className="send-button" aria-label="发送消息" title="发送消息" disabled={sending || !input.trim()} type="submit"><ArrowUp size={18} /></button></div></div></form>
+        <form className="composer" onSubmit={event => { event.preventDefault(); submitMessage(input); }}>
+          <div className="composer-shell">
+            <textarea
+              ref={inputRef}
+              rows={1}
+              value={input}
+              maxLength={2000}
+              disabled={sending}
+              onChange={event => {
+                setInput(event.target.value);
+                event.currentTarget.style.height = "44px";
+                event.currentTarget.style.height = `${Math.min(event.currentTarget.scrollHeight, 96)}px`;
+              }}
+              onKeyDown={event => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  submitMessage(input);
+                }
+              }}
+              placeholder="没有合适选项？补充你的情况"
+              aria-label="补充你的情况"
+            />
+            <button className="send-button" aria-label="发送消息" title="发送消息" disabled={sending || !input.trim()} type="submit"><ArrowUp size={17} /></button>
+          </div>
+        </form>
       </section>
       <Journey completedScenes={completedScenes} onComplete={onComplete} />
     </section>

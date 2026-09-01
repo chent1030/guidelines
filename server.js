@@ -17,9 +17,9 @@ let inFlightCalls = 0;
 const ALLOWED_TOOLS = {
   chatgpt: {
     name: "ChatGPT",
-    tag: "通用 AI 对话助手",
+    tag: "文本与通用推理助手",
     benchmarks: ["豆包", "公司内 catlgpt"],
-    focus: "写作、翻译、润色、总结、头脑风暴和通用问答"
+    focus: "纯文本写作、翻译、润色、总结、通用分析与头脑风暴"
   },
   codex: {
     name: "Codex",
@@ -29,7 +29,7 @@ const ALLOWED_TOOLS = {
   },
   workbuddy: {
     name: "WorkBuddy",
-    tag: "全场景 AI 办公工作台",
+    tag: "AI 办公工作台",
     benchmarks: ["公司内大头虾"],
     focus: "会议纪要、办公文档、PPT、日程、知识库与办公协同"
   },
@@ -49,6 +49,32 @@ const INTEREST_STARTER_OPTIONS = {
   "采购与供应链": ["供应商评估与管理", "采购成本与比价分析", "交付风险与进度跟踪", "采购文档与合同要点整理"],
   "经营管理": ["经营数据与趋势分析", "预算与计划编制", "经营会议材料整理", "管理决策信息汇总"]
 };
+
+const SPECIALISED_TOOL_RULES = [
+  {
+    toolId: "jimeng",
+    pattern: /(文化工作墙|文化墙|宣传墙|海报|展板|配图|产品图|图片编辑|图像生成|视觉稿|视觉设计|短视频|宣传片|封面|插画)/i,
+    reason: "主要交付物是视觉内容，即梦AI更适合直接制作图片、海报、展板或创意视频素材。"
+  },
+  {
+    toolId: "codex",
+    pattern: /(代码|编程|脚本|程序开发|接口开发|API|SQL|数据库处理|数据清洗|批量处理|自动化流程|自动化脚本|爬虫|VBA|宏程序)/i,
+    reason: "主要交付物是可执行的代码或自动化流程，Codex更适合生成、修改并验证实现。"
+  },
+  {
+    toolId: "workbuddy",
+    pattern: /(会议纪要|会议记录|PPT|演示文稿|办公文档|Word文档|日程安排|知识库|OA协同|任务协同|会议材料|归档材料)/i,
+    reason: "主要交付物是结构化办公材料或协同内容，WorkBuddy更贴合文档、PPT和办公协作场景。"
+  }
+];
+
+function specialisedToolForScenario(raw, message) {
+  const context = [message, raw?.sceneTitle, raw?.reply, raw?.practicePrompt]
+    .filter(value => typeof value === "string")
+    .join("\n")
+    .slice(0, 6000);
+  return SPECIALISED_TOOL_RULES.find(rule => rule.pattern.test(context)) || null;
+}
 
 const auditPool = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL, max: Number.parseInt(process.env.DB_POOL_MAX || "20", 10), idleTimeoutMillis: 30000, connectionTimeoutMillis: 5000 })
@@ -123,6 +149,18 @@ app.post("/api/guide/chat/stream", async (request, response, next) => {
       if (event.type === "chunk" || event.type === "agent_trace") writeSse(response, event);
       if (event.type === "done") {
         const result = normaliseAgentResponse(event.raw, { intent, message, interestArea, completedScenes, currentToolId, preferredToolId });
+        if (result.selectionAdjusted) {
+          writeSse(response, {
+            type: "agent_trace",
+            step: {
+              id: "recommendation-review",
+              agent: "推荐校验",
+              status: "completed",
+              message: `已按最终交付物校正为 ${result.recommendation.name}`,
+              detail: result.recommendation.reason
+            }
+          });
+        }
         await finishAudit(auditId, { status: "succeeded", response: result, latencyMs: Date.now() - startedAt });
         writeSse(response, { type: "done", result });
       }
@@ -414,11 +452,13 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "", 
       interestSelection: true
     };
   }
+  const modelToolId = typeof raw.recommendedTool === "string" && ALLOWED_TOOLS[raw.recommendedTool]
+    ? raw.recommendedTool
+    : null;
+  const specialisedTool = preferredToolId || !modelToolId ? null : specialisedToolForScenario(raw, message);
   const toolId = ALLOWED_TOOLS[preferredToolId]
     ? preferredToolId
-    : (typeof raw.recommendedTool === "string" && ALLOWED_TOOLS[raw.recommendedTool]
-      ? raw.recommendedTool
-      : null);
+    : (specialisedTool?.toolId || modelToolId);
   const steps = Array.isArray(raw.practiceSteps)
     ? raw.practiceSteps.map(step => text(step, 220)).filter(Boolean).slice(0, 4)
     : [];
@@ -435,7 +475,9 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "", 
     name: ALLOWED_TOOLS[toolId].name,
     tag: ALLOWED_TOOLS[toolId].tag,
     benchmarks: ALLOWED_TOOLS[toolId].benchmarks,
-    reason: text(raw.reason, 600) || `该工具更适合${ALLOWED_TOOLS[toolId].focus}。`,
+    reason: specialisedTool && specialisedTool.toolId !== modelToolId
+      ? specialisedTool.reason
+      : (text(raw.reason, 600) || `该工具更适合${ALLOWED_TOOLS[toolId].focus}。`),
     practicePrompt: text(raw.practicePrompt, 1800),
     practiceSteps: steps
   } : null;
@@ -449,7 +491,8 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "", 
     sceneSelection: Boolean(raw.sceneSelection),
     nextToolSuggestions: [],
     inferredInterestArea,
-    scenarioStarted: intent?.type === "direct_scenario"
+    scenarioStarted: intent?.type === "direct_scenario",
+    selectionAdjusted: Boolean(specialisedTool && modelToolId && specialisedTool.toolId !== modelToolId)
   };
   if (intent?.type === "complete_current_scene") {
     if (!text(raw.reply, 1800)) result.reply = "当前场景已完成。接下来可以从下面的工具中选择一个继续体验。";

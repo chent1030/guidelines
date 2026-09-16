@@ -7,6 +7,7 @@ const { Pool } = require("pg");
 const path = require("path");
 const fs = require("fs");
 const { MODEL, runGuide, streamGuide, classifyUserIntent, inferInterestArea } = require("./agent-runtime");
+const { explicitDeliverableTool, resolveGuidance, pyramidReply } = require("./guidance-policy");
 
 const app = express();
 const PORT = Number.parseInt(process.env.PORT || "3000", 10);
@@ -69,11 +70,54 @@ const SPECIALISED_TOOL_RULES = [
 ];
 
 function specialisedToolForScenario(raw, message) {
-  const context = [message, raw?.sceneTitle, raw?.reply, raw?.practicePrompt]
-    .filter(value => typeof value === "string")
-    .join("\n")
-    .slice(0, 6000);
-  return SPECIALISED_TOOL_RULES.find(rule => rule.pattern.test(context)) || null;
+  // The user's request is the source of truth. Model prose can mention
+  // alternative tools while reasoning and must not change the correction.
+  for (const context of [message, raw?.sceneTitle]) {
+    if (typeof context !== "string") continue;
+    const match = SPECIALISED_TOOL_RULES.find(rule => rule.pattern.test(context));
+    if (match) return match;
+  }
+  return null;
+}
+
+function hasConflictingTool(value, toolId) {
+  const patterns = {
+    chatgpt: /chat\s*gpt/i,
+    codex: /\bcodex\b/i,
+    workbuddy: /work\s*buddy/i,
+    jimeng: /即梦(?:\s*AI)?|\bjimeng\b/i
+  };
+  return Object.entries(patterns).some(([id, pattern]) => id !== toolId && pattern.test(value));
+}
+
+function recommendationFallback(toolId) {
+  const directions = {
+    chatgpt: "比较不同判断角度、识别关键假设与风险，探索可选的管理思路",
+    codex: "探索代码与自动化能减少哪些重复工作，判断值得尝试的环节和投入边界",
+    workbuddy: "探索如何用办公材料和协同内容呈现管理思路，帮助团队形成共识",
+    jimeng: "探索不同视觉表达方向，比较图片或创意视频如何更好地传达管理理念"
+  };
+  const direction = directions[toolId];
+  return {
+    reply: `这个场景可以先${direction}。本次推荐体验 ${ALLOWED_TOOLS[toolId].name}。`,
+    reason: `该工具适合${ALLOWED_TOOLS[toolId].focus}，可以帮助你${direction}。`,
+    practicePrompt: `请围绕[填写虚构或脱敏后的场景]，${direction}。以集团公司经理的视角探索 2 至 3 个方向，关注应用机会、判断依据和能力边界。`,
+    practiceSteps: ["用虚构或脱敏背景替换场景占位内容。", "比较不同探索方向，判断哪些值得团队进一步尝试。"]
+  };
+}
+
+function fallbackToolForManagementScenario(message) {
+  const scenario = String(message || "");
+  if (/(汇报思路|经营汇报|管理汇报|管理方案|制度设计|会议议题|组织沟通|工作计划|行动计划)/i.test(scenario)) {
+    return {
+      toolId: "workbuddy",
+      reason: "这个场景更适合先沉淀管理材料和协同讨论框架，WorkBuddy更贴合会议材料、方案文档和办公协同。"
+    };
+  }
+  return {
+    toolId: "chatgpt",
+    reason: "当前更适合先从管理视角梳理问题、机会和可选路径，ChatGPT可用于分析与头脑风暴；当方向明确后，再进入更专业的工具。"
+  };
 }
 
 const auditPool = process.env.DATABASE_URL
@@ -149,14 +193,14 @@ app.post("/api/guide/chat/stream", async (request, response, next) => {
       if (event.type === "chunk" || event.type === "agent_trace") writeSse(response, event);
       if (event.type === "done") {
         const result = normaliseAgentResponse(event.raw, { intent, message, interestArea, completedScenes, currentToolId, preferredToolId });
-        if (result.selectionAdjusted) {
+        if (result.selectionAdjusted && result.recommendation) {
           writeSse(response, {
             type: "agent_trace",
             step: {
               id: "recommendation-review",
               agent: "推荐校验",
               status: "completed",
-              message: `已按最终交付物校正为 ${result.recommendation.name}`,
+              message: `已统一推荐为 ${result.recommendation.name}`,
               detail: result.recommendation.reason
             }
           });
@@ -452,16 +496,46 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "", 
       interestSelection: true
     };
   }
-  const modelToolId = typeof raw.recommendedTool === "string" && ALLOWED_TOOLS[raw.recommendedTool]
+  const guidance = resolveGuidance(raw.guidance, { message, interestArea, intent });
+  if (!guidance.recommendationReady && !["complete_current_scene", "complete_without_active_scene"].includes(intent?.type)) {
+    return {
+      phase: "clarify",
+      reply: pyramidReply(guidance),
+      question: text(guidance.question, 400),
+      questionOptions: Array.isArray(guidance.explorationOptions)
+        ? guidance.explorationOptions.map(option => text(option, 120)).filter(Boolean).slice(0, 4)
+        : [],
+      sceneTitle: text(raw.sceneTitle, 100) || "当前探索方向",
+      recommendation: null,
+      sceneSelection: false,
+      nextToolSuggestions: [],
+      inferredInterestArea: text(interestArea, 100) || inferInterestArea(message),
+      scenarioStarted: true,
+      guidance,
+      selectionAdjusted: false
+    };
+  }
+  const modelToolId = typeof raw.recommendedTool === "string" && Object.hasOwn(ALLOWED_TOOLS, raw.recommendedTool)
     ? raw.recommendedTool
     : null;
-  const specialisedTool = preferredToolId || !modelToolId ? null : specialisedToolForScenario(raw, message);
-  const toolId = ALLOWED_TOOLS[preferredToolId]
-    ? preferredToolId
-    : (specialisedTool?.toolId || modelToolId);
+  const preferredTool = Object.hasOwn(ALLOWED_TOOLS, preferredToolId) ? preferredToolId : null;
+  const specialisedTool = preferredTool ? null : specialisedToolForScenario(
+    { sceneTitle: guidance.goal }, explicitDeliverableTool(message) ? message : ""
+  );
+  const directFallback = guidance.recommendationReady && !preferredTool && !modelToolId && !specialisedTool
+    ? fallbackToolForManagementScenario(guidance.goal || message)
+    : null;
+  const toolId = preferredTool
+    ? preferredTool
+    : (specialisedTool?.toolId || modelToolId || directFallback?.toolId);
   const steps = Array.isArray(raw.practiceSteps)
     ? raw.practiceSteps.map(step => text(step, 220)).filter(Boolean).slice(0, 4)
     : [];
+  const selectionAdjusted = Boolean(toolId && toolId !== modelToolId);
+  const fallback = toolId ? recommendationFallback(toolId) : null;
+  const conflictingCopy = toolId && [raw.reply, raw.reason, raw.practicePrompt, ...steps]
+    .some(value => typeof value === "string" && hasConflictingTool(value, toolId));
+  const rebuildRecommendation = selectionAdjusted || conflictingCopy;
   const questionOptions = Array.isArray(raw.questionOptions)
     ? raw.questionOptions.map(option => text(option, 120)).filter(Boolean).slice(0, 4)
     : [];
@@ -475,15 +549,15 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "", 
     name: ALLOWED_TOOLS[toolId].name,
     tag: ALLOWED_TOOLS[toolId].tag,
     benchmarks: ALLOWED_TOOLS[toolId].benchmarks,
-    reason: specialisedTool && specialisedTool.toolId !== modelToolId
-      ? specialisedTool.reason
-      : (text(raw.reason, 600) || `该工具更适合${ALLOWED_TOOLS[toolId].focus}。`),
-    practicePrompt: text(raw.practicePrompt, 1800),
-    practiceSteps: steps
+    reason: rebuildRecommendation ? (specialisedTool?.reason || directFallback?.reason || fallback.reason)
+      : (text(raw.reason, 600) || fallback.reason),
+    practicePrompt: rebuildRecommendation ? fallback.practicePrompt : (text(raw.practicePrompt, 1800) || fallback.practicePrompt),
+    practiceSteps: rebuildRecommendation || !steps.length ? fallback.practiceSteps : steps
   } : null;
   const result = {
     phase,
-    reply: removeTrailingQuestion(text(raw.reply, 1800) || (toolId ? "我已为你匹配到合适的体验工具。" : "请再补充一点你希望完成的任务。"), question),
+    reply: rebuildRecommendation ? fallback.reply
+      : removeTrailingQuestion(text(raw.reply, 1800) || (toolId ? "我已为你匹配到合适的体验工具。" : "请再补充一点你希望完成的任务。"), question),
     question,
     questionOptions,
     sceneTitle: text(raw.sceneTitle, 100) || "当前体验场景",
@@ -492,10 +566,11 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "", 
     nextToolSuggestions: [],
     inferredInterestArea,
     scenarioStarted: intent?.type === "direct_scenario",
-    selectionAdjusted: Boolean(specialisedTool && modelToolId && specialisedTool.toolId !== modelToolId)
+    guidance,
+    selectionAdjusted: Boolean(rebuildRecommendation)
   };
   if (intent?.type === "complete_current_scene") {
-    if (!text(raw.reply, 1800)) result.reply = "当前场景已完成。接下来可以从下面的工具中选择一个继续体验。";
+    result.reply = "当前场景已完成。接下来可以从下面的工具中选择一个继续体验。";
     result.nextToolSuggestions = nextToolSuggestions(raw.nextToolSuggestions, { completedScenes, currentToolId });
     result.interestSelection = true;
     result.question = "也可以继续选择一个关注领域，开始下一个场景。";
@@ -530,12 +605,12 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "", 
       recommendation: null
     };
   }
-  if (intent?.type === "start_new_scene" && (result.phase !== "clarify" || result.recommendation)) {
+  if (intent?.type === "start_new_scene" && !result.recommendation) {
     return {
       phase: "clarify",
-      reply: `先了解“${text(message, 120)}”的具体要求，再为你匹配合适的工具。`,
-      question: "请补充这个任务的具体使用场景、面向对象、已有材料，以及你希望的输出要求。",
-      questionOptions: ["先说明使用场景", "先说明面向对象", "先说明已有材料", "先说明输出要求"],
+      reply: `我们先从“${text(message, 120)}”所对应的管理议题开始。`,
+      question: "你更希望借助 AI 探索哪一类管理机会？",
+      questionOptions: ["辅助分析与判断", "形成管理思路", "推动跨团队协同", "先了解可用工具"],
       sceneTitle: result.sceneTitle,
       recommendation: null
     };
@@ -551,10 +626,19 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "", 
       interestSelection: true
     };
   }
+  if (result.recommendation) {
+    result.phase = phase === "teach" ? "teach" : "recommend";
+    result.question = "";
+    result.questionOptions = [];
+  }
   return result;
 }
 
-initAuditStore().catch(error => console.error("PostgreSQL 初始化失败:", error.message));
-app.listen(PORT, () => {
-  console.log(`AI 实验室已启动：http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  initAuditStore().catch(error => console.error("PostgreSQL 初始化失败:", error.message));
+  app.listen(PORT, () => {
+    console.log(`AI 实验室已启动：http://localhost:${PORT}`);
+  });
+}
+
+module.exports = { app, normaliseAgentResponse };

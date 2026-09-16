@@ -469,6 +469,23 @@ button, textarea { font: inherit; } button { cursor: pointer; } button:focus-vis
 .guide-card .small-button.primary { color: #fff; border-color: var(--status-blue); background: var(--status-blue); }
 .guide-card .practice { border-left-color: var(--status-blue); background: #f5f9fa; }
 
+/* The exposed neighboring cards are the navigation surface. */
+.deck-browsable .guide-card.deck-card { width: calc(100% - 64px); margin: 0 32px; }
+.deck-browsable:focus { outline: none; }
+.deck-browsable:focus-visible .guide-card { outline: 2px solid #8bc2d7; outline-offset: 4px; }
+.deck-neighbor { position: absolute; top: 36px; bottom: 56px; z-index: 2; display: flex; align-items: center; border: 1px solid #52646c; border-radius: 8px; background: #314047; color: #c6d4d9; cursor: pointer; transition: background 180ms ease, transform 180ms ease; }
+.deck-previous { left: 0; right: 64px; justify-content: flex-start; }
+.deck-next { left: 64px; right: 0; justify-content: flex-end; }
+.deck-neighbor span { position: absolute; top: 32px; width: 30px; writing-mode: vertical-rl; text-align: center; font-size: 11px; letter-spacing: .12em; }
+.deck-previous span { left: 0; }
+.deck-next span { right: 0; }
+.deck-neighbor:hover, .deck-neighbor:focus-visible { background: #425e6a; outline: 2px solid #8bc2d7; outline-offset: 2px; }
+.deck-previous:hover { transform: translateX(-3px); }
+.deck-next:hover { transform: translateX(3px); }
+.deck-hint { margin: 18px 32px 0; color: #aebbbd; font-size: 11px; text-align: center; }
+.guide-card .guide-actions button:disabled, .guide-card .interest-grid button:disabled { cursor: default; opacity: .65; transform: none; box-shadow: none; }
+@media (prefers-reduced-motion: reduce) { .deck-neighbor { transition: none; } }
+
 @media (max-width: 700px) {
   .guide-card-head { min-height: 70px; padding: 13px 15px; }
   .guide-step > .guide-stage-icon { width: 36px; height: 36px; }

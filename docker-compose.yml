@@ -5,14 +5,14 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: ai_experience
-      POSTGRES_USER: guide_user
-      POSTGRES_PASSWORD: change-me
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "Ct0520.0402"
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U guide_user -d ai_experience"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_experience"]
       interval: 5s
       timeout: 5s
       retries: 10

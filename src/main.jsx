@@ -157,7 +157,7 @@ function guideStage(message) {
   return "任务指引";
 }
 
-function GuideCard({ message, active, showInterestSelector, onOption, onInterestSelect, onComplete, onToolSelect }) {
+function GuideCard({ message, active, interactive, position, showInterestSelector, onOption, onInterestSelect, onComplete, onToolSelect }) {
   const html = renderMarkdown(message.content);
   const hasAgentTrace = message.agentSteps?.length > 0;
   const resolved = Boolean(message.selectedOption);
@@ -166,7 +166,7 @@ function GuideCard({ message, active, showInterestSelector, onOption, onInterest
       <header className="guide-card-head">
         <div className="guide-step">
           <span className="guide-stage-icon"><Sparkles size={18} /></span>
-          <div><span>AI 实验室</span><b>{guideStage(message)}</b></div>
+          <div><span>AI 实验室 · {position}</span><b>{guideStage(message)}</b></div>
         </div>
         <div className={`guide-state ${message.streaming ? "running" : "ready"}`}><i />{message.streaming ? "Agent 运行中" : "指引已就绪"}</div>
       </header>
@@ -179,15 +179,28 @@ function GuideCard({ message, active, showInterestSelector, onOption, onInterest
         {message.question && <div className="guide-question"><span>需要你的选择</span><strong>{message.question}</strong></div>}
         {resolved ? <div className="selection-result"><CheckCircle2 size={16} /><span>已选择</span><b>{message.selectedOption}</b></div> : message.questionOptions?.length > 0 && (
           <div className="guide-actions">
-            {message.questionOptions.map((option, index) => <button style={{ "--delay": `${index * 45}ms` }} key={option} type="button" onClick={() => onOption(option, message.id)}><span>{String(index + 1).padStart(2, "0")}</span><b>{option}</b><ArrowRight size={15} /></button>)}
+            {message.questionOptions.map((option, index) => <button disabled={!interactive} style={{ "--delay": `${index * 45}ms` }} key={option} type="button" onClick={() => onOption(option, message.id)}><span>{String(index + 1).padStart(2, "0")}</span><b>{option}</b><ArrowRight size={15} /></button>)}
           </div>
         )}
-        {showInterestSelector && <InterestSelector onSelect={onInterestSelect} />}
+        {showInterestSelector && <InterestSelector onSelect={onInterestSelect} disabled={!interactive} />}
         {message.recommendation && <Recommendation data={message} active={active} onComplete={onComplete} />}
-        {message.nextToolSuggestions?.length > 0 && <ToolSuggestions suggestions={message.nextToolSuggestions} onSelect={onToolSelect} />}
+        {message.nextToolSuggestions?.length > 0 && <ToolSuggestions suggestions={message.nextToolSuggestions} onSelect={onToolSelect} disabled={!interactive} />}
       </div>
     </article>
   );
+}
+
+function AgentTraceDetail({ detail, streaming }) {
+  const detailRef = useRef(null);
+  const followOutput = useRef(true);
+  useEffect(() => {
+    const element = detailRef.current;
+    if (element && streaming && followOutput.current) element.scrollTop = element.scrollHeight;
+  }, [detail, streaming]);
+  return <pre ref={detailRef} aria-busy={streaming} onScroll={event => {
+    const element = event.currentTarget;
+    followOutput.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
+  }}>{detail}</pre>;
 }
 
 function AgentTrace({ steps, running }) {
@@ -201,7 +214,7 @@ function AgentTrace({ steps, running }) {
         {steps.map(step => (
           <div className="trace-step" key={step.id}>
             <span className={`trace-state ${step.status}`}>{step.status === "completed" ? <CheckCircle2 size={14} /> : <i />}</span>
-            <div><b>{step.agent}</b><span>{step.message}</span>{step.detail && <pre>{step.detail}</pre>}</div>
+            <div><b>{step.agent}</b><span>{step.message}</span>{step.detail && <AgentTraceDetail detail={step.detail} streaming={running && step.status === "running"} />}</div>
           </div>
         ))}
       </div>
@@ -209,7 +222,7 @@ function AgentTrace({ steps, running }) {
   );
 }
 
-function InterestSelector({ onSelect }) {
+function InterestSelector({ onSelect, disabled = false }) {
   return (
     <section className="interest-panel" aria-labelledby="interest-title">
       <div className="interest-heading">
@@ -217,7 +230,7 @@ function InterestSelector({ onSelect }) {
         <h3 id="interest-title">选择一个关注领域</h3>
       </div>
       <div className="interest-grid">
-        {INTEREST_AREAS.map(([title, detail], index) => <button key={title} type="button" onClick={() => onSelect(title)}><span className="interest-index">0{index + 1}</span><span className="interest-copy"><b>{title}</b><small>{detail}</small></span><ArrowRight size={16} /></button>)}
+        {INTEREST_AREAS.map(([title, detail], index) => <button disabled={disabled} key={title} type="button" onClick={() => onSelect(title)}><span className="interest-index">0{index + 1}</span><span className="interest-copy"><b>{title}</b><small>{detail}</small></span><ArrowRight size={16} /></button>)}
       </div>
     </section>
   );
@@ -235,7 +248,7 @@ function Recommendation({ data, active, onComplete }) {
       <p>{recommendation.reason}</p>
       <div className="benchmarks"><b>对标参考（不可体验）：</b>{recommendation.benchmarks.length ? recommendation.benchmarks.map(name => <span key={name}>{name}</span>) : <em>暂无对标产品</em>}</div>
       <div className="recommendation-actions">
-        <button className="small-button primary" type="button" onClick={() => setShowPractice(true)}>生成练习提示词</button>
+        <button className="small-button primary" type="button" onClick={() => setShowPractice(true)}>生成探索提纲</button>
         <button className="small-button" type="button" onClick={() => setShowDemo(true)}>观看演示</button>
       </div>
       {showDemo && <VideoPlayer src={TOOLS[recommendation.toolId]?.video} />}
@@ -244,7 +257,7 @@ function Recommendation({ data, active, onComplete }) {
   );
 }
 
-function ToolSuggestions({ suggestions, onSelect }) {
+function ToolSuggestions({ suggestions, onSelect, disabled = false }) {
   if (!suggestions?.length) return null;
   return (
     <section className="tool-suggestions" aria-label="下一步工具建议">
@@ -258,7 +271,7 @@ function ToolSuggestions({ suggestions, onSelect }) {
           <div className={`tool-suggestion tool-${suggestion.toolId}`} key={suggestion.toolId}>
             <div className="tool-suggestion-top"><b>{suggestion.title}</b><span>{suggestion.suggestedScenario}</span></div>
             <p>{suggestion.reason}</p>
-            <button className="small-button" type="button" onClick={() => onSelect(suggestion)}><ArrowRight size={15} /> 体验这个工具</button>
+            <button disabled={disabled} className="small-button" type="button" onClick={() => onSelect(suggestion)}><ArrowRight size={15} /> 体验这个工具</button>
           </div>
         ))}
       </div>
@@ -295,13 +308,13 @@ function Practice({ recommendation, active, onComplete }) {
   }
   return (
     <div className="practice">
-      <h3>脱敏练习</h3>
-      <p>将下方内容复制到 {recommendation.name}，再用虚构或脱敏材料替换方括号中的内容。</p>
+      <h3>管理层探索提纲</h3>
+      <p>将下方内容复制到 {recommendation.name}，用虚构或脱敏背景与 AI 讨论机会、判断和可选方向。</p>
       <pre>{prompt}</pre>
       <button className="small-button" type="button" onClick={copyPrompt}>{copied ? <Check size={15} /> : <Copy size={15} />} {copied ? "已复制" : "复制提示词"}</button>
       {copyError && <p className="copy-error" role="alert">{copyError}</p>}
       {recommendation.practiceSteps.length > 0 && <ol>{recommendation.practiceSteps.map(step => <li key={step}>{step}</li>)}</ol>}
-      <button className="small-button primary complete-button" type="button" disabled={!active} onClick={onComplete}>我已完成本场景</button>
+      <button className="small-button primary complete-button" type="button" disabled={!active} onClick={onComplete}>我已完成本次探索</button>
     </div>
   );
 }
@@ -326,33 +339,65 @@ function Guide({ userName, onComplete }) {
   const [activeRecommendation, setActiveRecommendation] = useState(null);
   const [completedScenes, setCompletedScenes] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [viewedCardId, setViewedCardId] = useState(null);
   const [sending, setSending] = useState(false);
   const [input, setInput] = useState("");
   const messagesRef = useRef(null);
   const inputRef = useRef(null);
+  const deckRef = useRef(null);
+  const assistantMessages = messages.filter(message => message.role === "assistant");
+  const latestIndex = assistantMessages.length - 1;
+  const selectedIndex = assistantMessages.findIndex(message => message.id === viewedCardId);
+  const cardIndex = selectedIndex < 0 ? latestIndex : selectedIndex;
+  const activeMessage = assistantMessages[cardIndex];
+  const isLatest = cardIndex === latestIndex;
+  const interactive = isLatest && !sending;
+
+  function viewCard(index) {
+    if (index < 0 || index > latestIndex) return;
+    setViewedCardId(index === latestIndex ? null : assistantMessages[index].id);
+    deckRef.current?.focus({ preventScroll: true });
+  }
+
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
+      if (event.target.closest?.("input, textarea, select, video, [contenteditable]:not([contenteditable='false']), [role='slider']")) return;
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      const index = cardIndex + (event.key === "ArrowLeft" ? -1 : 1);
+      if (index >= 0 && index <= latestIndex) {
+        setViewedCardId(index === latestIndex ? null : assistantMessages[index].id);
+        deckRef.current?.focus({ preventScroll: true });
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [cardIndex, messages.length]);
 
   useEffect(() => {
     const container = messagesRef.current;
     const card = container?.querySelector(".guide-card:last-of-type");
     if (!container || !card) return;
     container.scrollTo({ top: Math.max(0, card.offsetTop - 24), behavior: messages.length > 1 ? "smooth" : "auto" });
-  }, [messages.length]);
+  }, [activeMessage?.id]);
   useEffect(() => { inputRef.current?.focus(); }, []);
   useEffect(() => { addWelcomeMessage(); }, []);
 
   function addWelcomeMessage() {
-    setMessages([{ id: "guide-welcome", role: "assistant", content: "选择一个关注领域开始指引。已有明确任务时，也可以通过下方输入框直接提交。" }]);
+    setMessages([{ id: "guide-welcome", role: "assistant", interestSelection: true, content: "选择一个关注领域开始指引。已有明确任务时，也可以通过下方输入框直接提交。" }]);
   }
 
   async function submitMessage(value, { interestSelection = false, selectedArea = "", completionRequest = false, preferredToolId = "" } = {}) {
     const message = value.trim();
-    if (!message || sending) return;
+    if (!message || sending || !isLatest) return;
     const initialTurn = messages.length === 1;
     const requestArea = selectedArea || interestArea;
     const streamId = `stream-${Date.now()}`;
     setInput("");
     if (inputRef.current) inputRef.current.style.height = "44px";
     setSending(true);
+    setViewedCardId(null);
     setMessages(previous => [...previous, { id: `task-${Date.now()}`, role: "user", content: message }, { id: streamId, role: "assistant", content: "", streaming: true, agentSteps: [] }]);
     try {
       const response = await fetch("/api/guide/chat/stream", { method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" }, body: JSON.stringify({ message, sessionId, userName, activeScene, currentToolId: activeRecommendation?.toolId || "", completedScenes, initialTurn, interestArea: requestArea, interestSelection, preferredToolId }) });
@@ -393,7 +438,7 @@ function Guide({ userName, onComplete }) {
           if (event.type === "done") {
             completed = true;
             const data = event.result;
-            setMessages(previous => previous.map(item => item.id === streamId ? { ...item, streaming: false, content: data.reply, question: data.question, questionOptions: data.questionOptions, recommendation: data.recommendation, nextToolSuggestions: data.nextToolSuggestions, phase: data.phase } : item));
+            setMessages(previous => previous.map(item => item.id === streamId ? { ...item, streaming: false, content: data.reply, question: data.question, questionOptions: data.questionOptions, recommendation: data.recommendation, nextToolSuggestions: data.nextToolSuggestions, phase: data.phase, interestSelection: Boolean(data.interestSelection || data.sceneSelection) } : item));
             if (completionRequest && activeRecommendation && activeScene) {
               setCompletedScenes(previous => previous.some(scene => scene.title === activeScene && scene.toolName === activeRecommendation.name)
                 ? previous
@@ -450,51 +495,64 @@ function Guide({ userName, onComplete }) {
         };
       }));
     }
-    finally { setSending(false); inputRef.current?.focus(); }
+    finally { setSending(false); }
   }
 
   function selectInterestArea(area) {
+    if (!interactive) return;
+    setMessages(previous => previous.map(item => item.id === activeMessage?.id ? { ...item, selectedOption: area } : item));
     setInterestArea(area);
     setShowInterestSelector(false);
     submitMessage(area, { interestSelection: true, selectedArea: area });
   }
 
   function selectOption(option, cardId) {
+    if (!interactive || cardId !== activeMessage?.id) return;
     setMessages(previous => previous.map(item => item.id === cardId ? { ...item, selectedOption: option } : item));
     submitMessage(option);
   }
 
   function completeScene() {
-    if (!activeRecommendation || !activeScene) return;
+    if (!interactive || !activeRecommendation || !activeScene) return;
     submitMessage("我已完成本场景", { completionRequest: true });
   }
 
   function selectSuggestedTool(suggestion) {
+    if (!interactive) return;
     const scenario = suggestion.suggestedScenario || `用${suggestion.title}处理一个新的工作场景`;
     submitMessage(`我想用${suggestion.title}体验：${scenario}`, { preferredToolId: suggestion.toolId });
   }
 
-  const assistantMessages = messages.filter(message => message.role === "assistant");
-  const activeMessage = assistantMessages.at(-1);
   const deckDepth = Math.min(Math.max(assistantMessages.length - 1, 0), 3);
 
   return (
     <section className="workspace" aria-label="AI 实验室指引">
       <section className="conversation">
         <div className="messages" ref={messagesRef} aria-live="polite">
-          <div className={`message-stack deck-stage deck-depth-${deckDepth}`}>
-            <div className="deck-underlay deck-underlay-far" aria-hidden="true"><span>AI 实验室</span></div>
-            <div className="deck-underlay deck-underlay-near" aria-hidden="true"><span>下一张指引</span></div>
+          <div ref={deckRef} tabIndex={0} role="region" aria-label="指引卡组，使用左右方向键切换" className={`message-stack deck-stage deck-browsable deck-depth-${deckDepth}`}>
+            {[-1, 1].map(direction => {
+              const neighbor = assistantMessages[cardIndex + direction];
+              if (!neighbor) return null;
+              return <div key={direction} className={`deck-neighbor ${direction < 0 ? "deck-previous" : "deck-next"}`} role="button" tabIndex={0}
+                aria-label={direction < 0 ? "查看上一张指引卡片" : "查看下一张指引卡片"}
+                onClick={() => viewCard(cardIndex + direction)}
+                onKeyDown={event => {
+                  if (event.key === "Enter" || event.key === " ") { event.preventDefault(); viewCard(cardIndex + direction); }
+                }}><span>{guideStage(neighbor)}</span></div>;
+            })}
             {activeMessage && <GuideCard
               key={activeMessage.id}
               message={activeMessage}
-              active={activeRecommendation === activeMessage.recommendation}
-              showInterestSelector={showInterestSelector}
+              active={interactive && activeRecommendation === activeMessage.recommendation}
+              interactive={interactive}
+              position={`${cardIndex + 1} / ${assistantMessages.length}${isLatest ? "" : " · 历史指引"}`}
+              showInterestSelector={activeMessage.interestSelection ?? (isLatest && showInterestSelector)}
               onOption={selectOption}
               onInterestSelect={selectInterestArea}
               onComplete={completeScene}
               onToolSelect={selectSuggestedTool}
             />}
+            {assistantMessages.length > 1 && <p className="deck-hint">← → 切换指引 · 点击两侧卡片查看</p>}
           </div>
         </div>
         <form className="composer" onSubmit={event => { event.preventDefault(); submitMessage(input); }}>
@@ -504,7 +562,7 @@ function Guide({ userName, onComplete }) {
               rows={1}
               value={input}
               maxLength={2000}
-              disabled={sending}
+              disabled={!interactive}
               onChange={event => {
                 setInput(event.target.value);
                 event.currentTarget.style.height = "44px";
@@ -516,10 +574,10 @@ function Guide({ userName, onComplete }) {
                   submitMessage(input);
                 }
               }}
-              placeholder="没有合适选项？补充你的情况"
+              placeholder={isLatest ? "没有合适选项？补充你的情况" : "正在查看历史指引，切回最新卡片后继续"}
               aria-label="补充你的情况"
             />
-            <button className="send-button" aria-label="发送消息" title="发送消息" disabled={sending || !input.trim()} type="submit"><ArrowUp size={17} /></button>
+            <button className="send-button" aria-label="发送消息" title="发送消息" disabled={!interactive || !input.trim()} type="submit"><ArrowUp size={17} /></button>
           </div>
         </form>
       </section>

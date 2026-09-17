@@ -68,7 +68,7 @@ function Header() {
         <div className="brand-mark" aria-hidden="true"><Sparkles size={18} /></div>
         <div>
           <h1>AI 实验室</h1>
-          <p>对话式工具指引 · 溧阳基地数字工具站</p>
+          <p>经理 AI 实践导览 · 溧阳基地数字工具站</p>
         </div>
       </div>
       <div className="secure-badge"><ShieldCheck size={15} /> 仅使用脱敏练习材料</div>
@@ -84,9 +84,9 @@ function Welcome({ onStart }) {
       </div>
       <div className="welcome-copy">
         <div>
-          <div className="eyebrow">AI 实验室 · 任务导览</div>
-          <h2>从一个任务开始。</h2>
-          <p>AI 实验室帮助你理解工具、匹配真实工作场景，并通过安全的动手实践掌握使用方法。</p>
+          <div className="eyebrow">AI 实验室 · 管理实践</div>
+          <h2>从一个管理问题开始。</h2>
+          <p>通过金字塔式引导梳理管理问题，最终生成两道可实践的 AI 题目。</p>
           <div className="welcome-actions">
             <button className="button" onClick={onStart}>开始指引 <ArrowRight size={17} /></button>
           </div>
@@ -151,13 +151,14 @@ function TaskReceipt({ message }) {
 
 function guideStage(message) {
   if (message.streaming) return "正在生成指引";
+  if (message.challengeCards?.length) return "实践挑战";
   if (message.nextToolSuggestions?.length) return "下一步体验";
-  if (message.recommendation) return "工具推荐";
+  if (message.recommendation) return "探索提纲";
   if (message.question) return "快速确认";
   return "任务指引";
 }
 
-function GuideCard({ message, active, interactive, position, showInterestSelector, onOption, onInterestSelect, onComplete, onToolSelect }) {
+function GuideCard({ message, active, interactive, position, showInterestSelector, onOption, onInterestSelect, onComplete, onToolSelect, onChallengeRequest, completedChallengeIds = [], onToggleChallenge }) {
   const html = renderMarkdown(message.content);
   const hasAgentTrace = message.agentSteps?.length > 0;
   const resolved = Boolean(message.selectedOption);
@@ -183,10 +184,58 @@ function GuideCard({ message, active, interactive, position, showInterestSelecto
           </div>
         )}
         {showInterestSelector && <InterestSelector onSelect={onInterestSelect} disabled={!interactive} />}
-        {message.recommendation && <Recommendation data={message} active={active} onComplete={onComplete} />}
+        {message.recommendation && <Recommendation data={message} active={active} onComplete={onComplete} onChallengeRequest={onChallengeRequest} />}
         {message.nextToolSuggestions?.length > 0 && <ToolSuggestions suggestions={message.nextToolSuggestions} onSelect={onToolSelect} disabled={!interactive} />}
+        {message.challengeCards?.length > 0 && <ChallengeCards cards={message.challengeCards} completedIds={completedChallengeIds} onToggleComplete={onToggleChallenge} />}
       </div>
     </article>
+  );
+}
+
+function ChallengeCards({ cards, completedIds = [], onToggleComplete }) {
+  return (
+    <section className="challenge-list" aria-label="实践挑战题">
+      <div className="challenge-heading">
+        <span className="starter-label">经理实践挑战</span>
+        <h3>从两道题开始体验</h3>
+        <p>下面两道题都需要完成，按顺序完成一次完整的 AI 协作。</p>
+      </div>
+      <div className="challenge-grid">
+        {cards.map(card => (
+          <article className="challenge-card" key={card.id}>
+            <div className="challenge-card-top"><span>{card.eyebrow}</span><b>{card.title}</b></div>
+            <p className="challenge-question">{card.question}</p>
+            <p className="challenge-context">{card.context}</p>
+            <ChallengeToolVideos challengeId={card.id} />
+            <div className="challenge-section"><b>需要准备</b><ul>{card.inputs?.map(item => <li key={item}>{item}</li>)}</ul></div>
+            <div className="challenge-section"><b>操作步骤</b><ol>{card.steps.map(step => <li key={step}>{step}</li>)}</ol></div>
+            <div className="challenge-section"><b>完成后应得到</b><ul>{card.deliverables.map(item => <li key={item}>{item}</li>)}</ul></div>
+            <div className="challenge-section"><b>完成标准</b><ul>{card.completionCriteria?.map(item => <li key={item}>{item}</li>)}</ul></div>
+            <div className="challenge-section challenge-reflection"><b>复盘问题</b><ul>{card.reflectionQuestions?.map(item => <li key={item}>{item}</li>)}</ul></div>
+            <label className="challenge-complete"><input type="checkbox" checked={completedIds.includes(card.id)} onChange={() => onToggleComplete(card.id)} /> <span>我已完成这道题</span></label>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ChallengeToolVideos({ challengeId }) {
+  const tools = challengeId === "idea-to-running-project"
+    ? [["ChatGPT", "chatgpt"], ["Codex", "codex"]]
+    : [["WorkBuddy", "workbuddy"]];
+  return (
+    <div className="challenge-videos">
+      <span className="challenge-videos-label">相关工具演示</span>
+      <div className="challenge-video-list">
+        {tools.map(([name, toolId]) => (
+          <details key={toolId}>
+            <summary>{name} 演示</summary>
+            <VideoPlayer src={TOOLS[toolId].video} />
+          </details>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -236,7 +285,7 @@ function InterestSelector({ onSelect, disabled = false }) {
   );
 }
 
-function Recommendation({ data, active, onComplete }) {
+function Recommendation({ data, active, onComplete, onChallengeRequest }) {
   const [showPractice, setShowPractice] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
   const recommendation = data.recommendation;
@@ -250,6 +299,7 @@ function Recommendation({ data, active, onComplete }) {
       <div className="recommendation-actions">
         <button className="small-button primary" type="button" onClick={() => setShowPractice(true)}>生成探索提纲</button>
         <button className="small-button" type="button" onClick={() => setShowDemo(true)}>观看演示</button>
+        <button className="small-button" type="button" onClick={onChallengeRequest}>生成实践题</button>
       </div>
       {showDemo && <VideoPlayer src={TOOLS[recommendation.toolId]?.video} />}
       {showPractice && <Practice recommendation={recommendation} active={active} onComplete={onComplete} />}
@@ -319,14 +369,14 @@ function Practice({ recommendation, active, onComplete }) {
   );
 }
 
-function Journey({ completedScenes, onComplete }) {
+function Journey({ completedScenes, onComplete, challengeRequired = false, challengeComplete = false }) {
   return (
     <aside className="journey">
       <div className="journey-kicker">体验进度</div>
       <h2>本次体验记录</h2>
-      <p>完成一个场景后，会保留简要记录；新的体验从关注领域重新开始。</p>
+      <p>{challengeRequired ? "两道实践题都完成后，才可以结束本次体验。" : "完成一个场景后，会保留简要记录；新的体验从关注领域重新开始。"}</p>
       {!completedScenes.length ? <div className="empty-record">尚未完成场景。完成当前练习后，记录会显示在这里。</div> : completedScenes.map(scene => <div className="scene-record" key={`${scene.title}-${scene.toolName}`}><b>{scene.title}</b><span>已体验 · {scene.toolName}</span></div>)}
-      <button className="reset" onClick={onComplete}><Check size={15} /> 完成本次体验</button>
+      <button className="reset" disabled={challengeRequired && !challengeComplete} onClick={onComplete}><Check size={15} /> {challengeRequired && !challengeComplete ? "请先完成两道题" : "完成本次体验"}</button>
     </aside>
   );
 }
@@ -338,6 +388,7 @@ function Guide({ userName, onComplete }) {
   const [activeScene, setActiveScene] = useState("");
   const [activeRecommendation, setActiveRecommendation] = useState(null);
   const [completedScenes, setCompletedScenes] = useState([]);
+  const [completedChallengeIds, setCompletedChallengeIds] = useState([]);
   const [messages, setMessages] = useState([]);
   const [viewedCardId, setViewedCardId] = useState(null);
   const [sending, setSending] = useState(false);
@@ -351,7 +402,9 @@ function Guide({ userName, onComplete }) {
   const cardIndex = selectedIndex < 0 ? latestIndex : selectedIndex;
   const activeMessage = assistantMessages[cardIndex];
   const isLatest = cardIndex === latestIndex;
-  const interactive = isLatest && !sending;
+  const challengePresented = assistantMessages.some(message => message.challengeCards?.length > 0);
+  const challengeComplete = completedChallengeIds.length >= 2;
+  const interactive = isLatest && !sending && !challengePresented;
 
   function viewCard(index) {
     if (index < 0 || index > latestIndex) return;
@@ -388,10 +441,11 @@ function Guide({ userName, onComplete }) {
     setMessages([{ id: "guide-welcome", role: "assistant", interestSelection: true, content: "选择一个关注领域开始指引。已有明确任务时，也可以通过下方输入框直接提交。" }]);
   }
 
-  async function submitMessage(value, { interestSelection = false, selectedArea = "", completionRequest = false, preferredToolId = "" } = {}) {
+  async function submitMessage(value, { interestSelection = false, selectedArea = "", completionRequest = false, preferredToolId = "", challengeId = "", challengeRequest = false } = {}) {
     const message = value.trim();
     if (!message || sending || !isLatest) return;
     const initialTurn = messages.length === 1;
+    const turnCount = messages.filter(item => item.role === "user").length + 1;
     const requestArea = selectedArea || interestArea;
     const streamId = `stream-${Date.now()}`;
     setInput("");
@@ -400,7 +454,7 @@ function Guide({ userName, onComplete }) {
     setViewedCardId(null);
     setMessages(previous => [...previous, { id: `task-${Date.now()}`, role: "user", content: message }, { id: streamId, role: "assistant", content: "", streaming: true, agentSteps: [] }]);
     try {
-      const response = await fetch("/api/guide/chat/stream", { method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" }, body: JSON.stringify({ message, sessionId, userName, activeScene, currentToolId: activeRecommendation?.toolId || "", completedScenes, initialTurn, interestArea: requestArea, interestSelection, preferredToolId }) });
+      const response = await fetch("/api/guide/chat/stream", { method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" }, body: JSON.stringify({ message, sessionId, userName, activeScene, currentToolId: activeRecommendation?.toolId || "", completedScenes, initialTurn, interestArea: requestArea, interestSelection, preferredToolId, challengeId, challengeRequest, turnCount }) });
       if (!response.ok) {
         const body = await response.text();
         let data = null;
@@ -438,7 +492,7 @@ function Guide({ userName, onComplete }) {
           if (event.type === "done") {
             completed = true;
             const data = event.result;
-            setMessages(previous => previous.map(item => item.id === streamId ? { ...item, streaming: false, content: data.reply, question: data.question, questionOptions: data.questionOptions, recommendation: data.recommendation, nextToolSuggestions: data.nextToolSuggestions, phase: data.phase, interestSelection: Boolean(data.interestSelection || data.sceneSelection) } : item));
+            setMessages(previous => previous.map(item => item.id === streamId ? { ...item, streaming: false, content: data.reply, question: data.question, questionOptions: data.questionOptions, recommendation: data.recommendation, nextToolSuggestions: data.nextToolSuggestions, challengeCards: data.challengeCards, phase: data.phase, interestSelection: Boolean(data.interestSelection || data.sceneSelection) } : item));
             if (completionRequest && activeRecommendation && activeScene) {
               setCompletedScenes(previous => previous.some(scene => scene.title === activeScene && scene.toolName === activeRecommendation.name)
                 ? previous
@@ -523,6 +577,24 @@ function Guide({ userName, onComplete }) {
     submitMessage(`我想用${suggestion.title}体验：${scenario}`, { preferredToolId: suggestion.toolId });
   }
 
+  function selectChallenge(challenge) {
+    if (!interactive) return;
+    setActiveScene(challenge.title);
+    setShowInterestSelector(false);
+    submitMessage(`我选择实践挑战：${challenge.title}`, { challengeId: challenge.id });
+  }
+
+  function requestChallenges() {
+    if (!interactive) return;
+    submitMessage(`请基于当前场景“${activeScene || "当前管理场景"}”生成两道实践题，并保留原有建议。`, { challengeRequest: true });
+  }
+
+  function toggleChallenge(challengeId) {
+    setCompletedChallengeIds(previous => previous.includes(challengeId)
+      ? previous.filter(id => id !== challengeId)
+      : [...previous, challengeId]);
+  }
+
   const deckDepth = Math.min(Math.max(assistantMessages.length - 1, 0), 3);
 
   return (
@@ -551,6 +623,9 @@ function Guide({ userName, onComplete }) {
               onInterestSelect={selectInterestArea}
               onComplete={completeScene}
               onToolSelect={selectSuggestedTool}
+              onChallengeRequest={requestChallenges}
+              completedChallengeIds={completedChallengeIds}
+              onToggleChallenge={toggleChallenge}
             />}
             {assistantMessages.length > 1 && <p className="deck-hint">← → 切换指引 · 点击两侧卡片查看</p>}
           </div>
@@ -581,7 +656,7 @@ function Guide({ userName, onComplete }) {
           </div>
         </form>
       </section>
-      <Journey completedScenes={completedScenes} onComplete={onComplete} />
+      <Journey completedScenes={completedScenes} onComplete={onComplete} challengeRequired={challengePresented} challengeComplete={challengeComplete} />
     </section>
   );
 }

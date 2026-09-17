@@ -31,18 +31,17 @@ test("多轮模糊议题不能被模型推荐、关键词或用户工具偏好�
   }
 });
 
-test("议题和目标收敛后无需执行细节即可推荐", () => {
+test("议题和目标收敛后进入实践题而非工具推荐", () => {
   const result = normaliseAgentResponse({ guidance: ready, recommendedTool: "chatgpt", reply: ready.conclusion },
     { message: "就比较这个影响", activeScene: "排程瓶颈", intent: { type: "continue_current_scene" } });
-  assert.equal(result.recommendation.toolId, "chatgpt");
-  assert.equal(result.question, "");
+  assert.equal(result.recommendation, null);
+  assert.equal(result.challengeCards.length, 2);
 });
 
-test("明确成果即使建议失败也直接推荐", () => {
-  for (const [message, tool] of [["整理会议纪要", "workbuddy"], ["发布文化工作墙", "jimeng"], ["开发自动化脚本", "codex"]]) {
-    const result = normaliseAgentResponse({ guidance: exploring }, { message });
-    assert.equal(result.recommendation.toolId, tool);
-  }
+test("明确成果也由建议 Agent 判断后进入实践题", () => {
+  const result = normaliseAgentResponse({ guidance: ready }, { message: "整理会议纪要" });
+  assert.equal(result.recommendation, null);
+  assert.equal(result.challengeCards.length, 2);
 });
 
 test("多个目标、否定、只问能力都必须交给建议判断，不能关键词直推", () => {
@@ -51,11 +50,12 @@ test("多个目标、否定、只问能力都必须交给建议判断，不能�
   }
 });
 
-test("多个目标明确主次后按主目标选工具，不按第一处关键词纠偏", () => {
+test("多个目标明确主次后生成实践题，不按第一处关键词推荐工具", () => {
   const guidance = { ...ready, goal: "整理会议纪要", goalEvidence: "先整理会议纪要" };
   const result = normaliseAgentResponse({ guidance, recommendedTool: "workbuddy" },
     { message: "我想做海报和会议纪要，先整理会议纪要" });
-  assert.equal(result.recommendation.toolId, "workbuddy");
+  assert.equal(result.recommendation, null);
+  assert.equal(result.challengeCards.length, 2);
 });
 
 test("只选领域不能被就绪度误判推进", () => {

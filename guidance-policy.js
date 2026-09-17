@@ -27,6 +27,12 @@ function explicitDeliverableTool(message) {
   return matches.length === 1 ? matches[0][0] : null;
 }
 
+function isConcreteProjectRequest(message) {
+  const value = String(message || "").trim();
+  if (value.length < 8 || /(不|没|先别|暂缓|了解|是否|能不能|还是|或者|哪[个种些]|有用|价值|适合)/.test(value)) return false;
+  return /(?:我想|需要|请帮我|接到.*任务|现在要|准备).{0,20}(做|开发|搭建|构建|制作|设计|发布|整理|建立|创建|编制|上线)|(?:做|开发|搭建|构建|制作|设计|发布|整理|建立|创建)(一个|一份|一套)/.test(value);
+}
+
 function fallbackGuidance(interestArea = "") {
   return {
     conclusion: `可以先从${interestArea || "你关心的领域"}中选择一个值得探索的管理方向。`,
@@ -44,11 +50,11 @@ function resolveGuidance(raw, { message = "", interestArea = "", intent } = {}) 
   const parsed = guidanceSchema.safeParse(raw);
   const guidance = parsed.success ? parsed.data : fallbackGuidance(interestArea);
   const fieldOnly = intent?.type === "select_interest_area";
-  const deliverable = fieldOnly ? null : explicitDeliverableTool(message);
-  if (deliverable) {
+  const concreteProject = fieldOnly ? false : isConcreteProjectRequest(message);
+  if (concreteProject) {
     return {
       ...guidance,
-      conclusion: parsed.success && guidance.recommendationReady ? guidance.conclusion : "你的目标已经明确，可以直接体验与成果匹配的 AI 工具。",
+      conclusion: parsed.success ? guidance.conclusion : "你的项目目标已经明确，可以直接进入实践。",
       goal: message.slice(0, 300),
       goalEvidence: message.slice(0, 500),
       nextAction: "recommend",
@@ -79,4 +85,4 @@ function pyramidReply(guidance) {
   return [guidance.conclusion, ...guidance.keyReasons.map(reason => `- ${reason}`)].join("\n\n");
 }
 
-module.exports = { explicitDeliverableTool, resolveGuidance, parseGuidance, pyramidReply };
+module.exports = { explicitDeliverableTool, isConcreteProjectRequest, resolveGuidance, parseGuidance, pyramidReply };

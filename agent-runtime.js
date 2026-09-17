@@ -15,6 +15,7 @@ const ENABLE_THINKING = /^(1|true|yes)$/i.test(process.env.QWEN_ENABLE_THINKING 
 const DATABASE_URL = process.env.DATABASE_URL || "";
 const ALLOWED_TOOL_IDS = ["chatgpt", "codex", "workbuddy", "jimeng"];
 const INTEREST_AREAS = ["质量管理", "人力资源", "生产运营", "设备领域", "采购与供应链", "经营管理"];
+const MAX_GUIDANCE_TURNS = 3;
 
 // Qwen3 rejects forced tool_choice values while thinking is enabled. Keep
 // thinking off for this tool-using Agent unless a compatible model is selected.
@@ -24,35 +25,35 @@ const MODEL_KWARGS = /^qwen3(?:[-.]|$)/i.test(MODEL)
 
 const NEXT_STEP_ADVISOR_INSTRUCTIONS = [
   "你是导引 Agent 内部的下一步建议 Agent，不直接与用户对话，也不负责最终措辞。",
-  "服务对象是集团公司经理，目标是帮助他们形成 AI 应用想法并认识工具边界，不是替一线人员收集交付需求或设计执行方案。",
+  "服务对象是集团公司经理，目标是帮助他们形成 AI 应用想法并完成管理视角的实践题，不是替一线人员收集交付需求或设计执行方案。",
   "采用金字塔原理：先给一句当前判断结论，再用 1 至 3 个简洁依据支撑，最后给出 2 至 4 个同层级、尽量不重叠的探索方向。内容必须贴合用户议题。",
   "conclusion 和 keyReasons 会直接展示给经理：应讲管理价值和判断依据，不写‘不能推荐’‘推荐就绪’‘信息不足’等内部流程说明。比如‘先分清瓶颈是来自排程策略还是资源协调，更容易找到值得尝试的 AI 方向。’探索选项保持简短，不收集一线执行材料。",
-  "根据用户原话和前文评估推荐就绪度，绝不根据对话轮次决定推荐。只选领域、泛泛痛点或模糊兴趣不等于探索目标已明确。比如‘生产计划有瓶颈’应先区分识别成因、比较策略、协调资源等管理目标；‘比较不同排程策略对交付风险的影响’已明确分析目标，可以推荐，无须索取业务材料。",
-  "用户明确要会议纪要、文化墙、海报或自动化脚本等成果时应直接推荐。管理议题已有明确的探索目标且能匹配一种主要 AI 能力时也可推荐，不要求制作规格、预算或实施计划。",
-  "同时有多个目标且主次不明时，用一个关键问题确认主目标；用户只想了解 AI 时提供能力方向；只有场景和管理目标已经匹配，才设置 recommendationReady=true。不要为延长对话重复问已经回答的问题，也不要替用户选择目标。",
-  "仅返回 JSON，按顺序包含 conclusion（结论）、keyReasons（1至3个依据）、explorationOptions（2至4个方向）、goal（当前探索目标，未明确时为空）、goalEvidence（用户确认目标的原话，可引用前文）、question（最多一个关键问题）、nextAction（explore/clarify/recommend）、recommendationReady（布尔值）。推荐就绪时 nextAction= recommend、question 为空。正文不要提前写工具名。",
+  "根据用户原话和前文评估信息是否足够生成实践题。只选领域、泛泛痛点或模糊兴趣不等于信息充分。比如‘生产计划有瓶颈’应先区分管理目标；‘比较不同排程策略对交付风险的影响’才足以进入出题阶段。系统最多进行 5 轮用户输入，第 5 轮必须基于已有信息进入出题阶段，不得继续追问。",
+  "用户明确要会议纪要、文化墙、海报或自动化脚本等成果时，仍先从管理者视角确认希望探索的价值和判断重点，不要推荐工具。",
+  "同时有多个目标且主次不明时，用一个关键问题确认主目标；用户只想了解 AI 时提供能力方向；只有领域、管理问题、目标和判断重点足够清楚，才设置 recommendationReady=true。不要为延长对话重复问已经回答的问题，也不要替用户补写关键信息。",
+  "仅返回 JSON，按顺序包含 conclusion（结论）、keyReasons（1至3个依据）、explorationOptions（2至4个方向）、goal（当前探索目标，未明确时为空）、goalEvidence（用户确认目标的原话，可引用前文）、question（最多一个关键问题）、nextAction（explore/clarify/recommend）、recommendationReady（布尔值）。recommendationReady=true 仅表示可以生成实践题，不表示工具推荐。",
   "不要把用户刚描述场景视为场景完成；不要询问用户的已有材料、格式、制作规格、具体使用对象或限制条件。"
 ].join("\n");
 
 const GUIDE_INSTRUCTIONS = [
-  "你是面向集团公司经理的 AI 实验室导引 Agent。AI 实验室的目标是启发管理者发现 AI 在工作中的应用可能，并认识不同工具适合解决什么问题，不是承接实际项目的需求调研或执行交付。",
-  "用户可以先选择关注领域，也可以直接描述管理议题或明确成果。推荐时机由建议 Agent 的推荐就绪度决定，不由对话轮次决定。不要把描述痛点本身视为目标已经明确。",
+  "你是面向集团公司经理的 AI 实验室导引 Agent。AI 实验室的目标是启发管理者发现 AI 在工作中的应用可能，并通过两道实践题完成一次管理视角的 AI 协作，不是承接实际项目的需求调研或执行交付。",
+  "用户可以先选择关注领域，也可以直接描述管理议题或明确成果。进入出题阶段由建议 Agent 的信息充分度决定，不由对话轮次决定。不要把描述痛点本身视为目标已经明确。",
   "关注领域包括：质量管理、人力资源、生产运营、设备领域、采购与供应链、经营管理。领域选择本身不是具体任务。",
   "用户真正可以体验的工具只有 ChatGPT、Codex、WorkBuddy、即梦AI。豆包、catlgpt、opencode、大头虾只能作为不可体验的对标参考，绝不能推荐用户去使用。",
   "推荐必须以用户最终要交付的成果为准，而不是以任务所属领域为准。每次推荐前都要比较四个工具，优先选择能直接产出最终成果的专业工具；不要因为 ChatGPT 也能讨论或提供思路就默认推荐 ChatGPT。",
-  "工具边界必须严格遵守：即梦AI用于海报、文化墙、展板、配图、产品图、图片编辑和创意短视频等视觉成果；Codex用于代码、脚本、程序、接口、数据清洗、批量处理和可执行自动化；WorkBuddy用于会议纪要、PPT、办公文档、日程、知识库和办公协同；ChatGPT用于不依赖上述专业能力的纯文本写作、语言处理、通用分析、推理和头脑风暴。",
+  "题目中的工具组合是固定的：第一题使用 ChatGPT + Codex，第二题使用 WorkBuddy。不要根据场景改成其他工具推荐。",
   "当任务同时包含策划和制作时，按最终成果选择：例如文化工作墙、海报或短视频应推荐即梦AI，不要因为前期需要文案而推荐 ChatGPT；自动化报表或批处理应推荐 Codex；会议纪要或正式 PPT 应推荐 WorkBuddy。只有主要成果确实是纯文本或通用推理时才推荐 ChatGPT。",
   "推荐理由只能引用上述已声明能力，禁止声称工具内置工业知识图谱、FMEA、鱼骨图、语音转写、自动导出或其他未明确提供的专有功能。",
   "用户刚选择关注领域时，信息不足：先询问该领域中最想关注的管理议题、决策机会或团队挑战，并提供 2 到 4 个方向。这一轮不得推荐工具、生成练习提示词或判定完成。",
-  "直接进入场景只代表无需重新选择领域，不代表必须推荐。严格遵守系统提供的 guidance.recommendationReady：false 时不得调用 recommend_tool、create_practice_prompt，recommendedTool 必须为 null；true 时直接推荐唯一工具并生成探索提纲，不再收集落地细节。",
-  "对明确场景的回复必须以管理者视角组织：先点出值得探索的管理机会，再解释推荐工具能帮助看到什么或验证什么，最后给出 2 到 3 个可讨论的探索方向。避免输出制作步骤、操作清单、字段模板、详细排期或具体文件要求。",
+  "直接进入场景只代表无需重新选择领域，不代表信息已经足够出题。严格遵守系统提供的 guidance.recommendationReady：false 时继续用金字塔结构澄清一个关键点；true 时生成两道经理视角的实践题，不调用任何工具推荐。",
+  "对明确场景的回复必须以管理者视角组织：先点出值得探索的管理机会，再解释判断依据，最后给出 2 到 4 个可讨论的探索方向。避免直接跳到工具、制作规格或一线执行清单。",
   "每轮用金字塔结构组织卡片：reply 先一句结论，再列 1 至 3 条关键依据；question 是一个关键问题；questionOptions 给 2 至 4 个同层级探索方向。根据建议 Agent 的结论、依据和目标推进，不在界面展示就绪度布尔值、内部字段名或调用协议。就绪后在探索提纲中保留 2 至 3 个探索方向。",
   "每轮只推进一个澄清步骤，只问一个关键问题；不要一次性把场景、对象、材料和输出要求全部问完。选择关注领域后的第一轮必须提供 2 到 4 个具体业务环节的 questionOptions，其他澄清轮次也应尽量提供选项。question 已由界面单独展示，reply 不要重复 question 的完整内容。",
-  "只有用户明确表示已完成练习（例如‘我已完成练习’）时，才允许调用 complete_scene；绝不能根据用户刚描述任务、模型生成提示词或用户点击快捷任务来推断完成。完成当前场景后，必须在 JSON 中返回 nextToolSuggestions：从尚未体验的工具中选择 1 到 3 个，说明适合的下一类场景和推荐理由，帮助用户继续体验。",
-  "只有系统提供的 recommendationReady=true 时才调用 recommend_tool 记录唯一推荐，再调用 create_practice_prompt 生成脱敏探索提纲。探索提纲应帮助经理与工具讨论方向、风险、选择或机会，不能写成一线执行说明书。",
-  "最终推荐必须保持一致：recommendedTool 与本轮 recommend_tool、create_practice_prompt 的 toolId 相同。reply 只描述管理机会，工具名称和推荐理由统一放在 recommendedTool、reason 中，不要在正文另列工具推荐。practicePrompt、practiceSteps 只围绕本轮唯一工具展开，不要推荐切换其他工具。只有用户完成当前场景后才提供 nextToolSuggestions。",
+  "只有用户明确表示已完成练习（例如‘我已完成练习’）时，才允许调用 complete_scene；绝不能根据用户刚描述任务、模型生成题目或用户点击快捷任务来推断完成。完成当前实践题后，引导用户回到领域选择。",
+  "只有系统提供的 recommendationReady=true 时才进入出题阶段。题目必须分别围绕‘ChatGPT + Codex 将想法转成需求并完成项目构建’和‘WorkBuddy 构建个人知识库’，并把当前领域、管理问题、目标和判断重点写进题目背景。不要输出工具推荐理由或单一工具匹配结论。",
+  "每道题都必须包含：题目目标、适用的经理场景、分步操作、输入材料要求、完成标准和复盘问题。操作步骤要明确说明先用 ChatGPT 澄清与整理需求，再把确认后的需求交给 Codex；WorkBuddy 题要说明收集脱敏资料、分类标注、检索验证和维护规则。",
   "敏感信息必须提醒用户替换为虚构或脱敏内容，不要复述敏感内容。用户完成一个场景后，允许继续描述下一个场景。",
-  "最终回复必须是合法 JSON，字段为 phase、reply、question、questionOptions、sceneTitle、recommendedTool、reason、practicePrompt、practiceSteps、nextToolSuggestions。nextToolSuggestions 是数组，每项包含 toolId、title、reason、suggestedScenario；toolId 只能是 chatgpt、codex、workbuddy、jimeng。非完成场景可返回空数组。recommendedTool 只能是 chatgpt、codex、workbuddy、jimeng 或 null。phase 只能是 clarify、recommend、teach。reply 可以使用 Markdown。"
+  "最终回复必须是合法 JSON，字段为 phase、reply、question、questionOptions、sceneTitle、recommendedTool、reason、practicePrompt、practiceSteps、nextToolSuggestions。recommendedTool 必须为 null，nextToolSuggestions 必须为空数组。phase 只能是 clarify、recommend、teach。reply 可以使用 Markdown。"
 ].join("\n");
 
 const recommendTool = tool(async ({ toolId, reason, sceneTitle }, config) => config?.configurable?.recommendationReady === true
@@ -106,7 +107,7 @@ async function getAgent() {
   agent = createDeepAgent({
     model,
     systemPrompt: GUIDE_INSTRUCTIONS,
-    tools: [recommendTool, createPracticePrompt, completeScene],
+    tools: [completeScene],
     checkpointer: await getCheckpointer()
   });
   return agent;
@@ -161,6 +162,9 @@ function classifyUserIntent({ message, activeScene = "", interestArea = "", inte
   if (interestSelection) {
     return { type: "select_interest_area", confidence: "high" };
   }
+  if (interestArea && !activeScene) {
+    return { type: "continue_current_scene", confidence: "high" };
+  }
   const asksForNewTask = /(我还想|另外|再做|下一个|新场景|请帮我|帮我)(写|做|制作|整理|生成|处理|开始)|我想(写|做|制作|整理|生成|处理|开始)/.test(normalized);
   if (isExplicitScenario(normalized) && (!activeScene || asksForNewTask)) {
     return { type: "direct_scenario", confidence: "high" };
@@ -171,9 +175,6 @@ function classifyUserIntent({ message, activeScene = "", interestArea = "", inte
     }
     return { type: "choose_interest_area", confidence: "high" };
   }
-  if (interestArea && !activeScene) {
-    return { type: "continue_current_scene", confidence: "high" };
-  }
   if (activeScene && asksForNewTask) {
     return { type: "start_new_scene", confidence: "medium" };
   }
@@ -181,6 +182,19 @@ function classifyUserIntent({ message, activeScene = "", interestArea = "", inte
     return { type: "start_new_scene", confidence: initialTurn ? "high" : "medium" };
   }
   return { type: "continue_current_scene", confidence: "medium" };
+}
+
+function applyGuidanceTurnLimit(guidance, { turnCount = 0, message = "" } = {}) {
+  if (turnCount < MAX_GUIDANCE_TURNS || guidance.recommendationReady) return guidance;
+  return {
+    ...guidance,
+    conclusion: guidance.conclusion || "基于目前已经梳理的信息，可以进入实践。",
+    goal: guidance.goal || String(message).slice(0, 300),
+    goalEvidence: guidance.goalEvidence || String(message).slice(0, 500),
+    nextAction: "recommend",
+    recommendationReady: true,
+    question: ""
+  };
 }
 
 function inferInterestArea(message) {
@@ -239,7 +253,7 @@ function prepareMessage(message, { initialTurn = false, activeScene = "", intere
   ].filter(Boolean).join("\n");
 }
 
-async function runGuide({ sessionId, message, initialTurn = false, activeScene = "", interestArea = "", intent, completedScenes = [], preferredToolId = "", currentToolId = "" }) {
+async function runGuide({ sessionId, message, initialTurn = false, activeScene = "", interestArea = "", intent, completedScenes = [], preferredToolId = "", currentToolId = "", challengeId = "", turnCount = 0 }) {
   if (intent?.type === "request_next_scene") return nextSceneSelection();
   if (intent?.type === "choose_interest_area") {
     return { ...nextSceneSelection(), reply: "我们先从你关心的领域开始。请选择一个方向，我会继续带你梳理具体需求。" };
@@ -253,7 +267,10 @@ async function runGuide({ sessionId, message, initialTurn = false, activeScene =
   try {
     for await (const part of streamNextStepAdvisor(context)) advice = part.output;
   } catch { /* Resolve conservatively when the advisor is unavailable. */ }
-  const guidance = parseGuidance(advice, context);
+  const guidance = applyGuidanceTurnLimit(parseGuidance(advice, context), { turnCount, message });
+  if (guidance.recommendationReady && (intent?.type === "direct_scenario" || turnCount >= MAX_GUIDANCE_TURNS)) {
+    return { phase: "teach", reply: guidance.conclusion, question: "", questionOptions: [], sceneTitle: guidance.goal || "当前实践方向", guidance };
+  }
   const result = await currentAgent.invoke({ messages: [{ role: "user", content: prepareMessage(message, { ...context, advice: JSON.stringify(guidance) }) }] }, { configurable: { thread_id: sessionId, recommendationReady: guidance.recommendationReady } });
   try {
     return { ...parseStreamResult(result), guidance };
@@ -322,7 +339,7 @@ function toolTrace(toolName, status, output) {
   };
 }
 
-async function* streamGuide({ sessionId, message, initialTurn = false, activeScene = "", interestArea = "", intent, completedScenes = [], preferredToolId = "", currentToolId = "" }) {
+async function* streamGuide({ sessionId, message, initialTurn = false, activeScene = "", interestArea = "", intent, completedScenes = [], preferredToolId = "", currentToolId = "", challengeId = "", turnCount = 0 }) {
   if (intent?.type === "request_next_scene") {
     const result = nextSceneSelection();
     yield { type: "agent_trace", step: { id: "guide", agent: "导引 Agent", status: "running", message: "正在整理场景列表...", detail: "" } };
@@ -359,9 +376,16 @@ async function* streamGuide({ sessionId, message, initialTurn = false, activeSce
   } catch (error) {
     advice = "";
   }
-  const guidance = parseGuidance(advice, guidanceContext);
+  const guidance = applyGuidanceTurnLimit(parseGuidance(advice, guidanceContext), { turnCount, message });
   advice = JSON.stringify(guidance);
-  yield { type: "agent_trace", step: { id: "advisor", agent: "建议 Agent", status: "completed", message: guidance.recommendationReady ? "探索目标已明确，进入工具匹配" : "继续梳理管理方向", detail: structuredDetail(advice) } };
+  yield { type: "agent_trace", step: { id: "advisor", agent: "建议 Agent", status: "completed", message: guidance.recommendationReady ? "信息已充分，进入实践题生成" : "继续梳理管理方向", detail: structuredDetail(advice) } };
+  if (guidance.recommendationReady && (intent?.type === "direct_scenario" || turnCount >= MAX_GUIDANCE_TURNS)) {
+    const reply = guidance.conclusion || "基于目前已确认的信息，可以进入实践题。";
+    yield { type: "agent_trace", step: { id: "guide", agent: "导引 Agent", status: "completed", message: "已根据当前信息生成实践题", detail: reply } };
+    yield { type: "chunk", text: reply };
+    yield { type: "done", raw: { phase: "teach", reply, question: "", questionOptions: [], sceneTitle: guidance.goal || "当前实践方向", guidance } };
+    return;
+  }
   yield { type: "agent_trace", step: { id: "guide", agent: "导引 Agent", status: "running", message: "正在结合建议组织回复...", detail: "" } };
   const currentAgent = await getAgent();
   const stream = await currentAgent.streamEvents(
@@ -460,4 +484,4 @@ async function* streamGuide({ sessionId, message, initialTurn = false, activeSce
   }
 }
 
-module.exports = { MODEL, runGuide, streamGuide, streamNextStepAdvisor, classifyUserIntent, inferInterestArea, ALLOWED_TOOL_IDS };
+module.exports = { MODEL, runGuide, streamGuide, streamNextStepAdvisor, classifyUserIntent, inferInterestArea, applyGuidanceTurnLimit, MAX_GUIDANCE_TURNS, ALLOWED_TOOL_IDS };

@@ -469,6 +469,35 @@ button, textarea { font: inherit; } button { cursor: pointer; } button:focus-vis
 .guide-card .small-button.primary { color: #fff; border-color: var(--status-blue); background: var(--status-blue); }
 .guide-card .practice { border-left-color: var(--status-blue); background: #f5f9fa; }
 
+.challenge-list { margin-top: 30px; padding-top: 24px; border-top: 1px solid var(--status-line); }
+.challenge-heading .starter-label { color: var(--status-blue); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+.challenge-heading h3 { margin: 6px 0 5px; color: var(--status-ink); font-size: 22px; }
+.challenge-heading p { margin: 0; color: var(--status-muted); }
+.challenge-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+.challenge-card { display: flex; min-width: 0; flex-direction: column; padding: 19px; border: 1px solid #d5e1e6; border-radius: 8px; background: #f8fbfc; box-shadow: 0 8px 18px rgba(36, 91, 115, .06); }
+.challenge-card-top { display: grid; gap: 6px; }
+.challenge-card-top span { color: var(--status-blue); font-size: 11px; font-weight: 700; letter-spacing: .06em; }
+.challenge-card-top b { color: var(--status-ink); font-size: 17px; line-height: 1.4; }
+.challenge-question { margin: 14px 0 8px; color: #30434b; font-weight: 700; line-height: 1.55; }
+.challenge-context { margin: 0; color: #687982; font-size: 13px; line-height: 1.65; }
+.challenge-videos { margin-top: 15px; padding: 12px 13px; border: 1px solid #dce7eb; border-radius: 6px; background: #f1f7f9; }
+.challenge-videos-label { display: block; margin-bottom: 8px; color: #526a73; font-size: 11px; font-weight: 700; letter-spacing: .06em; }
+.challenge-video-list { display: flex; flex-wrap: wrap; gap: 7px; }
+.challenge-video-list details { flex: 1 1 130px; min-width: 0; }
+.challenge-video-list summary { padding: 8px 10px; color: var(--status-blue); border: 1px solid #c9dfe8; border-radius: 5px; background: #fff; cursor: pointer; font-size: 12px; font-weight: 700; }
+.challenge-video-list summary:hover { border-color: #8dbdcd; background: #fbfeff; }
+.challenge-video-list details[open] { flex-basis: 100%; }
+.challenge-video-list .video-frame { margin-top: 9px; }
+.challenge-video-list video { width: 100%; max-height: 220px; border-radius: 5px; background: #17252b; }
+.challenge-section { margin-top: 16px; }
+.challenge-section > b { color: #41545c; font-size: 13px; }
+.challenge-section ol, .challenge-section ul { margin: 8px 0 0; padding-left: 21px; color: #52616a; font-size: 13px; line-height: 1.65; }
+.challenge-section li + li { margin-top: 5px; }
+.challenge-reflection { padding-top: 12px; border-top: 1px dashed #d5e1e6; }
+.challenge-complete { display: flex; align-items: center; gap: 8px; margin-top: 20px; padding-top: 13px; color: #3b5962; border-top: 1px solid #dce7eb; font-size: 13px; font-weight: 700; cursor: pointer; }
+.challenge-complete input { width: 16px; height: 16px; accent-color: var(--status-green); }
+@media (max-width: 760px) { .challenge-grid { grid-template-columns: 1fr; } }
+
 /* The exposed neighboring cards are the navigation surface. */
 .deck-browsable .guide-card.deck-card { width: calc(100% - 64px); margin: 0 32px; }
 .deck-browsable:focus { outline: none; }

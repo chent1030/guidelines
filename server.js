@@ -6,8 +6,9 @@ const express = require("express");
 const { Pool } = require("pg");
 const path = require("path");
 const fs = require("fs");
-const { MODEL, runGuide, streamGuide, classifyUserIntent, inferInterestArea } = require("./agent-runtime");
+const { MODEL, runGuide, streamGuide, classifyUserIntent, inferInterestArea, applyGuidanceTurnLimit } = require("./agent-runtime");
 const { explicitDeliverableTool, resolveGuidance, pyramidReply } = require("./guidance-policy");
+const { getChallengeCards } = require("./challenge-catalog");
 
 const app = express();
 const PORT = Number.parseInt(process.env.PORT || "3000", 10);
@@ -156,6 +157,9 @@ app.post("/api/guide/chat/stream", async (request, response, next) => {
     const currentToolId = text(request.body?.currentToolId, 40);
     const completedScenes = Array.isArray(request.body?.completedScenes) ? request.body.completedScenes : [];
     const preferredToolId = text(request.body?.preferredToolId, 40);
+    const challengeId = text(request.body?.challengeId, 80);
+    const challengeRequest = request.body?.challengeRequest === true;
+    const turnCount = Number.isInteger(request.body?.turnCount) ? request.body.turnCount : 0;
     const interestSelection = request.body?.interestSelection === true;
     const initialTurn = request.body?.initialTurn === true;
     if (!message) {
@@ -189,10 +193,10 @@ app.post("/api/guide/chat/stream", async (request, response, next) => {
     }, 15000);
     writeSse(response, { type: "agent_trace", step: { id: "intent", agent: "意图判断 Agent", status: "running", message: "正在分析用户意图...", detail: "" } });
     writeSse(response, { type: "agent_trace", step: { id: "intent", agent: "意图判断 Agent", status: "completed", message: intentTraceMessage(intent), detail: `意图类型：${intent.type}` } });
-    for await (const event of streamGuide({ sessionId, message, initialTurn, activeScene, interestArea, intent, completedScenes, preferredToolId, currentToolId })) {
+    for await (const event of streamGuide({ sessionId, message, initialTurn, activeScene, interestArea, intent, completedScenes, preferredToolId, currentToolId, challengeId, turnCount })) {
       if (event.type === "chunk" || event.type === "agent_trace") writeSse(response, event);
       if (event.type === "done") {
-        const result = normaliseAgentResponse(event.raw, { intent, message, interestArea, completedScenes, currentToolId, preferredToolId });
+        const result = normaliseAgentResponse(event.raw, { intent, message, interestArea, completedScenes, currentToolId, preferredToolId, challengeId, challengeRequest, turnCount });
         if (result.selectionAdjusted && result.recommendation) {
           writeSse(response, {
             type: "agent_trace",
@@ -239,6 +243,9 @@ app.post("/api/guide/chat", async (request, response, next) => {
     const currentToolId = text(request.body?.currentToolId, 40);
     const completedScenes = Array.isArray(request.body?.completedScenes) ? request.body.completedScenes : [];
     const preferredToolId = text(request.body?.preferredToolId, 40);
+    const challengeId = text(request.body?.challengeId, 80);
+    const challengeRequest = request.body?.challengeRequest === true;
+    const turnCount = Number.isInteger(request.body?.turnCount) ? request.body.turnCount : 0;
     const interestSelection = request.body?.interestSelection === true;
     const initialTurn = request.body?.initialTurn === true;
     if (!message) {
@@ -268,8 +275,8 @@ app.post("/api/guide/chat", async (request, response, next) => {
     const intent = classifyUserIntent({ message, activeScene, interestArea, interestSelection, initialTurn });
     auditId = await startAudit({ request, message, sessionId, startedAt, activeScene, interestArea, intent });
 
-    const raw = await runGuide({ sessionId, message, initialTurn, activeScene, interestArea, intent, completedScenes, preferredToolId, currentToolId });
-    const result = normaliseAgentResponse(typeof raw === "string" ? parseModelJson(raw) : raw, { intent, message, interestArea, completedScenes, currentToolId, preferredToolId });
+    const raw = await runGuide({ sessionId, message, initialTurn, activeScene, interestArea, intent, completedScenes, preferredToolId, currentToolId, challengeId, turnCount });
+    const result = normaliseAgentResponse(typeof raw === "string" ? parseModelJson(raw) : raw, { intent, message, interestArea, completedScenes, currentToolId, preferredToolId, challengeId, challengeRequest, turnCount });
     await finishAudit(auditId, { status: "succeeded", response: result, latencyMs: Date.now() - startedAt });
     response.set("Cache-Control", "no-store").json(result);
   } catch (error) {
@@ -483,7 +490,7 @@ function nextToolSuggestions(rawSuggestions, { completedScenes = [], currentTool
     }));
 }
 
-function normaliseAgentResponse(raw, { intent, message = "", interestArea = "", completedScenes = [], currentToolId = "", preferredToolId = "" } = {}) {
+function normaliseAgentResponse(raw, { intent, message = "", interestArea = "", completedScenes = [], currentToolId = "", preferredToolId = "", challengeId = "", challengeRequest = false, turnCount = 0 } = {}) {
   raw = raw && typeof raw === "object" ? raw : {};
   if (intent?.type === "request_next_scene" || intent?.type === "choose_interest_area") {
     return {
@@ -496,7 +503,7 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "", 
       interestSelection: true
     };
   }
-  const guidance = resolveGuidance(raw.guidance, { message, interestArea, intent });
+  const guidance = applyGuidanceTurnLimit(resolveGuidance(raw.guidance, { message, interestArea, intent }), { turnCount, message });
   if (!guidance.recommendationReady && !["complete_current_scene", "complete_without_active_scene"].includes(intent?.type)) {
     return {
       phase: "clarify",
@@ -515,67 +522,43 @@ function normaliseAgentResponse(raw, { intent, message = "", interestArea = "", 
       selectionAdjusted: false
     };
   }
-  const modelToolId = typeof raw.recommendedTool === "string" && Object.hasOwn(ALLOWED_TOOLS, raw.recommendedTool)
-    ? raw.recommendedTool
-    : null;
-  const preferredTool = Object.hasOwn(ALLOWED_TOOLS, preferredToolId) ? preferredToolId : null;
-  const specialisedTool = preferredTool ? null : specialisedToolForScenario(
-    { sceneTitle: guidance.goal }, explicitDeliverableTool(message) ? message : ""
-  );
-  const directFallback = guidance.recommendationReady && !preferredTool && !modelToolId && !specialisedTool
-    ? fallbackToolForManagementScenario(guidance.goal || message)
-    : null;
-  const toolId = preferredTool
-    ? preferredTool
-    : (specialisedTool?.toolId || modelToolId || directFallback?.toolId);
-  const steps = Array.isArray(raw.practiceSteps)
-    ? raw.practiceSteps.map(step => text(step, 220)).filter(Boolean).slice(0, 4)
-    : [];
-  const selectionAdjusted = Boolean(toolId && toolId !== modelToolId);
-  const fallback = toolId ? recommendationFallback(toolId) : null;
-  const conflictingCopy = toolId && [raw.reply, raw.reason, raw.practicePrompt, ...steps]
-    .some(value => typeof value === "string" && hasConflictingTool(value, toolId));
-  const rebuildRecommendation = selectionAdjusted || conflictingCopy;
   const questionOptions = Array.isArray(raw.questionOptions)
     ? raw.questionOptions.map(option => text(option, 120)).filter(Boolean).slice(0, 4)
     : [];
   const question = text(raw.question, 400);
   const inferredInterestArea = text(interestArea, 100) || (intent?.type === "direct_scenario" ? inferInterestArea(message) : "");
-  const phase = ["clarify", "recommend", "teach"].includes(raw.phase)
-    ? raw.phase
-    : (toolId ? "recommend" : "clarify");
-  const recommendation = toolId ? {
-    toolId,
-    name: ALLOWED_TOOLS[toolId].name,
-    tag: ALLOWED_TOOLS[toolId].tag,
-    benchmarks: ALLOWED_TOOLS[toolId].benchmarks,
-    reason: rebuildRecommendation ? (specialisedTool?.reason || directFallback?.reason || fallback.reason)
-      : (text(raw.reason, 600) || fallback.reason),
-    practicePrompt: rebuildRecommendation ? fallback.practicePrompt : (text(raw.practicePrompt, 1800) || fallback.practicePrompt),
-    practiceSteps: rebuildRecommendation || !steps.length ? fallback.practiceSteps : steps
-  } : null;
   const result = {
-    phase,
-    reply: rebuildRecommendation ? fallback.reply
-      : removeTrailingQuestion(text(raw.reply, 1800) || (toolId ? "我已为你匹配到合适的体验工具。" : "请再补充一点你希望完成的任务。"), question),
+    phase: guidance.recommendationReady ? "teach" : "clarify",
+    reply: pyramidReply(guidance),
     question,
     questionOptions,
     sceneTitle: text(raw.sceneTitle, 100) || "当前体验场景",
-    recommendation,
+    recommendation: null,
     sceneSelection: Boolean(raw.sceneSelection),
     nextToolSuggestions: [],
     inferredInterestArea,
-    scenarioStarted: intent?.type === "direct_scenario",
+    scenarioStarted: true,
     guidance,
-    selectionAdjusted: Boolean(rebuildRecommendation)
+    selectionAdjusted: false
   };
+  if (guidance.recommendationReady || challengeRequest || challengeId) {
+    const confirmedContext = [guidance.goal, guidance.goalEvidence]
+      .map(value => text(value, 500))
+      .filter(Boolean)
+      .filter((value, index, values) => values.indexOf(value) === index)
+      .join("；") || message;
+    const cards = getChallengeCards(interestArea || inferInterestArea(message), confirmedContext);
+    result.challengeCards = challengeId ? cards.filter(card => card.id === challengeId) : cards;
+    result.question = challengeId ? "完成这道题后，再继续完成另一道题。" : "下面两道实践题都需要完成，完成后即可结束本次体验。";
+  }
   if (intent?.type === "complete_current_scene") {
-    result.reply = "当前场景已完成。接下来可以从下面的工具中选择一个继续体验。";
-    result.nextToolSuggestions = nextToolSuggestions(raw.nextToolSuggestions, { completedScenes, currentToolId });
+    result.reply = "当前场景已完成。接下来可以重新选择一个关注领域，继续生成新的实践题。";
+    result.nextToolSuggestions = [];
     result.interestSelection = true;
     result.question = "也可以继续选择一个关注领域，开始下一个场景。";
     result.questionOptions = ["质量管理", "人力资源", "生产运营", "设备领域", "采购与供应链", "经营管理"];
     result.recommendation = null;
+    result.challengeCards = undefined;
     result.phase = "clarify";
   }
   if (intent?.type === "select_interest_area") {
